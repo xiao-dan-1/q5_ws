@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_datacollect</name>
+  <version>0.1.0</version>
+  <description>Q5 数采流水线（在 rospc 上跑）：record 录一集、convert 转一个任务（两者都只需给个任务名），
+    preflight 录制前体检（只读，含速率/QoS），bag2lerobot 是底层的 bag → LeRobot v2.1 转换（全控制入口）。
+    定位：一次性分析脚本仍留在仓库 tools_robot/ 不装包；这里只放「要短入口、随工作空间一起装」的数采工具。
+    分工：机器人侧常驻节点（joint_states_relay）在 q5_tools；本包不依赖机器人。</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

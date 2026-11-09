@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_hand_bridge</name>
+  <version>0.1.0</version>
+  <description>XHand 桥：TCP（手套）-> /hand_controller/commands，并把 /joint_states 反馈回发</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>xbot_common_interfaces</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

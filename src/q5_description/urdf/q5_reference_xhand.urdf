@@ -1,0 +1,2299 @@
+<robot name="q5_reference_approximation">
+  <!--Official body frames; estimated visual shells, NOT factory CAD. See README.md.-->
+  <material name="shell">
+    <color rgba=".86 .88 .91 1" />
+  </material>
+  <material name="trim">
+    <color rgba=".37 .40 .44 1" />
+  </material>
+  <material name="inner">
+    <color rgba=".70 .72 .75 1" />
+  </material>
+  <material name="dark">
+    <color rgba=".18 .19 .21 1" />
+  </material>
+  <material name="tire">
+    <color rgba=".025 .028 .034 1" />
+  </material>
+  <material name="led">
+    <color rgba=".30 .62 1 1" />
+  </material>
+  <material name="mark">
+    <color rgba=".52 .07 .10 1" />
+  </material>
+  <link name="base_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.014012 0.00040987 0.030551" />
+      <mass value="42.709" />
+      <inertia ixx="0.74568" ixy="-0.012746" ixz="0.03077048" iyy="0.9261" iyz="-0.0023537" izz="1.528" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.027 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/base.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <collision>
+      <origin xyz="-0.02 0 0.08" rpy="0 0 0" />
+      <geometry>
+        <box size=".52 .46 .16" />
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="-0.027 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/deck.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/ankle_mount.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/left_fender.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/left_fender_insert.stl" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="-0.013596 0.2525 0.05631" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.060113" length="0.003" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.235 0.156 0.004" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.012" length="0.03" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.243 0.156 -0.023" rpy="0 -0.3 0" />
+      <geometry>
+        <box size=".010 .010 .056" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 0.156 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.006" length="0.062" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.035" length="0.025" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.028" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <collision>
+      <origin xyz="0.25 0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.034" length="0.025" />
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0.25 0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.035" length="0.025" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.028" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <collision>
+      <origin xyz="0.25 0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.034" length="0.025" />
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/right_fender.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/right_fender_insert.stl" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="-0.013596 -0.2525 0.05631" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.060113" length="0.003" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.235 -0.156 0.004" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.012" length="0.03" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.243 -0.156 -0.023" rpy="0 -0.3 0" />
+      <geometry>
+        <box size=".010 .010 .056" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 -0.156 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.006" length="0.062" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 -0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.035" length="0.025" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 -0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.028" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <collision>
+      <origin xyz="0.25 -0.175 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.034" length="0.025" />
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0.25 -0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.035" length="0.025" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.25 -0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.028" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <collision>
+      <origin xyz="0.25 -0.137 -0.043" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.034" length="0.025" />
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0.28239126159997113 -0.0552 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.28319126159997116 -0.0552 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.2824917493799449 -0.0414 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.28329174937994495 -0.0414 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.282503913243641 -0.0276 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.283303913243641 -0.0276 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.282516077107337 -0.0138 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.283316077107337 -0.0138 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.282528241278818 0.0 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.283328241278818 0.0 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.28251607741512186 0.013800000000000007 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.2833160774151219 0.013800000000000007 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.28250391355142584 0.0276 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.28330391355142587 0.0276 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.2824917493939178 0.04139999999999999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.2832917493939178 0.04139999999999999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="0.2823912619400676 0.0552 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0123 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.2831912619400676 0.0552 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0123 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.287755729581696 -0.0999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.288555729581696 -0.0999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28892602309269816 -0.08325 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2897260230926982 -0.08325 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2894899152817651 -0.06659999999999999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2902899152817651 -0.06659999999999999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.289709159981938 -0.049949999999999994 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.29050915998193805 -0.049949999999999994 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28977732233084313 -0.033299999999999996 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.29057732233084316 -0.033299999999999996 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.289791998848644 -0.016649999999999998 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.290591998848644 -0.016649999999999998 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2898066752690121 1.3877787807814457e-17 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2906066752690121 1.3877787807814457e-17 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28979199867699657 0.016650000000000012 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2905919986769966 0.016650000000000012 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2897773222374749 0.03330000000000001 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2905773222374749 0.03330000000000001 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2897091593819393 0.04995000000000001 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.29050915938193933 0.04995000000000001 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28948991506912164 0.0666 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.29028991506912166 0.0666 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2889260225053298 0.08325 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.2897260225053298 0.08325 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28775572657021964 0.0999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0022 .0152 .0130" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.28855572657021966 0.0999 -0.024" rpy="0 0 0" />
+      <geometry>
+        <box size=".0016 .0152 .0076" />
+      </geometry>
+      <material name="led" />
+    </visual>
+  </link>
+  <link name="ankle_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00047994 0.0023115 0.21619" />
+      <mass value="7.3164" />
+      <inertia ixx="0.29033" ixy="-1.703E-05" ixz="-0.0011346" iyy="0.28932" iyz="0.00055054" izz="0.01489" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.008" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.039" length="0.114" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/shin.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="knee_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0026878 0.00070792 0.17911" />
+      <mass value="2.474" />
+      <inertia ixx="0.040172" ixy="-0.00010309" ixz="2.653E-05" iyy="0.033469" iyz="0.0002539" izz="0.011865" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.043" length="0.084" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/left_thigh.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/right_thigh.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/thigh_core.stl" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/thigh_front_recess.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="hip_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00103764 0.00304417 0.00598232" />
+      <mass value="3.02066694" />
+      <inertia ixx="0.00752688" ixy="2.878E-05" ixz="6.943E-05" iyy="0.00749045" iyz="-0.00018464" izz="0.00709671" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/pelvis.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.084" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.058" length="0.008" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="waist_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0046601 0.00016974 0.0042368" />
+      <mass value="3.9422" />
+      <inertia ixx="0.049848" ixy="-3.37E-06" ixz="0.0040885" iyy="0.047071" iyz="-2.801E-05" izz="0.0093816" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/chest.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/chest_yoke.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="-0.08403037564687976 0 0.129" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.028" length="0.006" />
+      </geometry>
+      <material name="mark" />
+    </visual>
+  </link>
+  <link name="neck_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.01307119 -0.00282636 0.05747981" />
+      <mass value="0.32337325" />
+      <inertia ixx="0.00025001" ixy="1.71E-06" ixz="-2.819E-05" iyy="0.00019688" iyz="5.34E-06" izz="0.00015654" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/neck.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="neck_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.01342226 -9.647E-05 0.06023734" />
+      <mass value="0.33670814" />
+      <inertia ixx="0.00111361" ixy="8.1E-07" ixz="0.00017683" iyy="0.00148315" iyz="4.3E-07" izz="0.001444" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/helmet.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/helmet_seam.stl" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/face_rim.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/face_panel.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.0835 -0.04 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0085" length="0.0022" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.0848 -0.04 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0058" length="0.0032" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.0835 0.04 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0085" length="0.0022" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.0848 0.04 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0058" length="0.0032" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0.0832 -0.012 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0022" length="0.002" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.0832 0.012 0.0655" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0022" length="0.002" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="head_rs_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0054453 0.00017197 -2.1745E-05" />
+      <mass value="0.01069" />
+      <inertia ixx="9.1126E-06" ixy="-1.617E-08" ixz="4.1847E-09" iyy="9.2791E-07" iyz="1.7295E-08" izz="9.3011E-06" />
+    </inertial>
+  </link>
+  <link name="left_arm_base_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0003073 0.076315 2.644E-05" />
+      <mass value="0.99002" />
+      <inertia ixx="0.00090157" ixy="-3.17E-06" ixz="2.16E-06" iyy="0.00079998" iyz="1.81E-06" izz="0.00089799" />
+    </inertial>
+  </link>
+  <link name="left_shoulder_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0050043 0.06894435 -0.0013023" />
+      <mass value="0.64146" />
+      <inertia ixx="0.00051593" ixy="1.04E-05" ixz="-8.15E-06" iyy="0.00044936" iyz="3.92E-05" izz="0.00046479" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/left_shoulder_bridge.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="left_shoulder_roll_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00211885 -0.00158378 -0.03534224" />
+      <mass value="0.17226343" />
+      <inertia ixx="0.00020011" ixy="-0.00000061" ixz="-1.223E-05" iyy="0.0002504" iyz="0.00000224" izz="0.00018541" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/shoulder.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/shoulder_rim.stl" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="left_arm_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00113597 -0.0016386 -0.11233" />
+      <mass value="1.2101" />
+      <inertia ixx="0.0085327" ixy="-6E-08" ixz="-8.854E-05" iyy="0.0084923" iyz="-0.00016489" izz="0.00077091" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.002" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.029" length="0.006" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/upper_arm.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="left_elbow_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00880355 -0.00323495 -0.0334867" />
+      <mass value="0.18069981" />
+      <inertia ixx="0.00027414" ixy="7.37E-06" ixz="-1.252E-05" iyy="0.00020754" iyz="3.39E-05" izz="0.00018765" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/elbow_housing.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0.0355 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.0305" length="0.002" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0.037 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.028" length="0.003" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/elbow_saddle.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="left_elbow_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00025009 -0.000948427 -0.06098779" />
+      <mass value="0.6617336" />
+      <inertia ixx=" 0.00129245" ixy="-4.87E-06" ixz="-1.904E-05" iyy="0.00124108" iyz="-3.408E-05" izz="0.00034324" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.003" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.025" length="0.004" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/forearm.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_fork_-1.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_fork_1.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="left_wrist_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0034386 -0.00062599 -5.68E-06" />
+      <mass value="0.27757" />
+      <inertia ixx="9.253E-05" ixy="-1.51E-06" ixz="-1.14E-06" iyy="9.898E-05" iyz="2.8E-07" izz="0.00010201" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_core.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="left_wrist_roll_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.01134998 0 -0.0250322" />
+      <mass value="0.04286878" />
+      <inertia ixx="2.059E-05" ixy="0" ixz="-8.09E-06" iyy="2.546E-05" iyz="0" izz="1.718E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0.0075 0 0" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.027" length="0.004" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.009 0 0" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0245" length="0.005" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.0 0.015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.012990381056766578 0.0075000000000000015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.01299038105676658 -0.007499999999999996" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 1.8369701987210296e-18 -0.015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 -0.012990381056766576 -0.007500000000000007" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 -0.012990381056766578 0.0075000000000000015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_mount.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="left_arm_flange_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-1.8041E-15 1.471E-15 0.064" />
+      <mass value="1E-06" />
+      <inertia ixx="1.6667E-13" ixy="3.8622E-30" ixz="3.3658E-30" iyy="1.6667E-13" iyz="-1.333E-45" izz="1.6667E-13" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.022" length="0.005" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="right_arm_base_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0003073 -0.076315 -2.644E-05" />
+      <mass value="0.99002" />
+      <inertia ixx="0.00090157" ixy="3.17E-06" ixz="-2.16E-06" iyy="0.00079998" iyz="1.81E-06" izz="0.00089799" />
+    </inertial>
+  </link>
+  <link name="right_shoulder_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0050037 -0.068922 -0.0013416" />
+      <mass value="0.64146" />
+      <inertia ixx="0.00051596" ixy="-1.076E-05" ixz="-7.55E-06" iyy="0.00044914" iyz="-3.905E-05" izz="0.00046504" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/right_shoulder_bridge.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="right_shoulder_roll_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0021219 -0.0015843 -0.035346" />
+      <mass value="0.17223" />
+      <inertia ixx="0.00020007" ixy="6.1E-07" ixz="1.224E-05" iyy="0.00025035" iyz="-2.28E-06" izz="0.00018537" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/shoulder.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/shoulder_rim.stl" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="right_arm_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.0010977 0.0016198 -0.11231" />
+      <mass value="1.2099" />
+      <inertia ixx="0.0085309" ixy="5.5E-07" ixz="-8.727E-05" iyy="0.0084894" iyz="0.00016693" izz="0.00077047" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.002" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.029" length="0.006" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/upper_arm.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="right_elbow_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00880547 0.0032133 -0.03349237" />
+      <mass value="0.18066843" />
+      <inertia ixx="0.00027375" ixy="-7.35E-06" ixz="-1.25E-05" iyy="0.00020747" iyz="-3.376E-05" izz="0.0001873" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/elbow_housing.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+    <visual>
+      <origin xyz="0 -0.0355 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.0305" length="0.002" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 -0.037 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.028" length="0.003" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/elbow_saddle.stl" />
+      </geometry>
+      <material name="dark" />
+    </visual>
+  </link>
+  <link name="right_elbow_yaw_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00012227 0.0010776 -0.061048" />
+      <mass value="0.66172" />
+      <inertia ixx="0.0012945" ixy="6.53E-06" ixz="-1.644E-05" iyy="0.0012433" iyz="3.172E-05" izz="0.00034303" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.003" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.025" length="0.004" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/forearm.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_fork_-1.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_fork_1.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="right_wrist_pitch_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.0034392 0.00095252 0.00011331" />
+      <mass value="0.27757" />
+      <inertia ixx="9.239E-05" ixy="3.32E-06" ixz="-4.7E-07" iyy="9.9E-05" iyz="-2.8E-07" izz="0.00010183" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_core.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="right_wrist_roll_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.01135 0 -0.025032" />
+      <mass value="0.042869" />
+      <inertia ixx="2.059E-05" ixy="0" ixz="0" iyy="2.546E-05" iyz="0" izz="1.718E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0.0075 0 0" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.027" length="0.004" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+    <visual>
+      <origin xyz="0.009 0 0" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0245" length="0.005" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.0 0.015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.012990381056766578 0.0075000000000000015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 0.01299038105676658 -0.007499999999999996" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 1.8369701987210296e-18 -0.015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 -0.012990381056766576 -0.007500000000000007" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0.0117 -0.012990381056766578 0.0075000000000000015" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.0016" length="0.0004" />
+      </geometry>
+      <material name="trim" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/wrist_mount.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <link name="right_arm_flange_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-1.27675647831893E-15 -6.10622663543836E-16 0.0640000000000044" />
+      <mass value="9.99999999999892E-07" />
+      <inertia ixx="1.6666666666663E-13" ixy="3.86220795429293E-30" ixz="3.36580652894299E-30" iyy="1.6666666666663E-13" iyz="9.10477526878529E-46" izz="1.66666666666649E-13" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.022" length="0.005" />
+      </geometry>
+      <material name="inner" />
+    </visual>
+  </link>
+  <link name="mic_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.00407660233407253 1.14491805943333E-17 0.000354971122621617" />
+      <mass value="0.0069649503648048" />
+      <inertia ixx="1.02200387116195E-05" ixy="-1.1893354136703E-21" ixz="8.37908784860721E-09" iyy="1.63235847230747E-07" iyz="-7.9289543430323E-21" izz="1.0092859929658E-05" />
+    </inertial>
+  </link>
+  <link name="left_drv_hang_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.092969 0 0.035633" />
+      <mass value="0.88972" />
+      <inertia ixx="0.00067332" ixy="0" ixz="0.00072199" iyy="0.0020012" iyz="0" izz="0.0014848" />
+    </inertial>
+  </link>
+  <link name="left_drv_wheel_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="1.8792E-06 0.21726 4.2798E-07" />
+      <mass value="2.2035" />
+      <inertia ixx="0.0030551" ixy="1.8E-07" ixz="0" iyy="0.0049881" iyz="4E-08" izz="0.0030551" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0.2173 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.077" length="0.036" />
+      </geometry>
+      <material name="tire" />
+    </visual>
+    <collision>
+      <origin xyz="0 0.2173 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.077" length="0.036" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_drv_hang_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.092969 0 0.035633" />
+      <mass value="0.88972" />
+      <inertia ixx="0.00067332" ixy="0" ixz="0.00072199" iyy="0.0020012" iyz="0" izz="0.0014848" />
+    </inertial>
+  </link>
+  <link name="right_drv_wheel_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="1.4091E-06 -0.21726 1.93E-06" />
+      <mass value="2.2035" />
+      <inertia ixx="0.0030551" ixy="0" ixz="0" iyy="0.0049881" iyz="-1.9E-07" izz="0.0030551" />
+    </inertial>
+    <visual>
+      <origin xyz="0 -0.2173 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.077" length="0.036" />
+      </geometry>
+      <material name="tire" />
+    </visual>
+    <collision>
+      <origin xyz="0 -0.2173 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.077" length="0.036" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="lidar_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00219018889931419 -0.000235783899037056 -0.0251240338300362" />
+      <mass value="0.39641557484248" />
+      <inertia ixx="0.000114254377245781" ixy="5.13153951596913E-07" ixz="-8.24873745804669E-07" iyy="0.000122667894009239" iyz="1.7706363712738E-09" izz="0.00018789631687675" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/reference/lidar_cover.stl" />
+      </geometry>
+      <material name="shell" />
+    </visual>
+  </link>
+  <joint name="ankle_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.085 0 0.155" />
+    <parent link="base_link" />
+    <child link="ankle_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="240" lower="0" upper="1.61" velocity="4.15" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="knee_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 0.43" />
+    <parent link="ankle_link" />
+    <child link="knee_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="240" lower="-2.53" upper="0.52" velocity="4.15" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="hip_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 0.34" />
+    <parent link="knee_link" />
+    <child link="hip_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="240" lower="-0.52" upper="1.57" velocity="4.15" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="waist_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 0.225" />
+    <parent link="hip_link" />
+    <child link="waist_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="95" lower="-1.57" upper="1.57" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="neck_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.042 0 0.217" />
+    <parent link="waist_yaw_link" />
+    <child link="neck_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="7.5" lower="-0.79" upper="0.79" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="neck_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0.015 0 0.0625" />
+    <parent link="neck_yaw_link" />
+    <child link="neck_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="7.5" lower="-0.26" upper="0.7" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="head_rs_joint" type="fixed">
+    <origin rpy="0 0.14655 0" xyz="0.059257 0 0.065296" />
+    <parent link="neck_pitch_link" />
+    <child link="head_rs_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_arm_base_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.0385 0 0.128" />
+    <parent link="waist_yaw_link" />
+    <child link="left_arm_base_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_shoulder_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0.09 0" />
+    <parent link="left_arm_base_link" />
+    <child link="left_shoulder_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="95" lower="-2.79" upper="2.79" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_shoulder_roll_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0.0725 -0.004" />
+    <parent link="left_shoulder_pitch_link" />
+    <child link="left_shoulder_roll_link" />
+    <axis xyz="1 0 0" />
+    <limit effort="32" lower="-0.24" upper="1.83" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_arm_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0.002 -0.0635" />
+    <parent link="left_shoulder_roll_link" />
+    <child link="left_arm_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="32" lower="-2.62" upper="2.62" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_elbow_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.001 0 -0.1965" />
+    <parent link="left_arm_yaw_link" />
+    <child link="left_elbow_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="32" lower="-2.27" upper="0.09" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_elbow_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.0055 0 -0.0723" />
+    <parent link="left_elbow_pitch_link" />
+    <child link="left_elbow_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="7.5" lower="-2.62" upper="2.62" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_wrist_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 -0.1492" />
+    <parent link="left_elbow_yaw_link" />
+    <child link="left_wrist_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="7.5" lower="-1.05" upper="1.05" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_wrist_roll_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 0" />
+    <parent link="left_wrist_pitch_link" />
+    <child link="left_wrist_roll_link" />
+    <axis xyz="1 0 0" />
+    <limit effort="7.5" lower="-1.05" upper="1.05" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_arm_flange_joint" type="fixed">
+    <origin rpy="-3.1416 0 0" xyz="0 0 -0.039" />
+    <parent link="left_wrist_roll_link" />
+    <child link="left_arm_flange_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_arm_base_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.0385 0 0.128" />
+    <parent link="waist_yaw_link" />
+    <child link="right_arm_base_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_shoulder_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 -0.09 0" />
+    <parent link="right_arm_base_link" />
+    <child link="right_shoulder_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="95" lower="-2.79" upper="2.79" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_shoulder_roll_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 -0.0725 -0.004" />
+    <parent link="right_shoulder_pitch_link" />
+    <child link="right_shoulder_roll_link" />
+    <axis xyz="1 0 0" />
+    <limit effort="32" lower="-1.83" upper="0.24" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_arm_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 -0.002 -0.0635" />
+    <parent link="right_shoulder_roll_link" />
+    <child link="right_arm_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="32" lower="-2.62" upper="2.62" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_elbow_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.001 0 -0.1965" />
+    <parent link="right_arm_yaw_link" />
+    <child link="right_elbow_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="32" lower="-2.27" upper="0.09" velocity="4.19" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_elbow_yaw_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="-0.0055 0 -0.0723" />
+    <parent link="right_elbow_pitch_link" />
+    <child link="right_elbow_yaw_link" />
+    <axis xyz="0 0 1" />
+    <limit effort="7.5" lower="-2.62" upper="2.62" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_wrist_pitch_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 -0.1492" />
+    <parent link="right_elbow_yaw_link" />
+    <child link="right_wrist_pitch_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="7.5" lower="-1.05" upper="1.05" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_wrist_roll_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 0 0" />
+    <parent link="right_wrist_pitch_link" />
+    <child link="right_wrist_roll_link" />
+    <axis xyz="1 0 0" />
+    <limit effort="7.5" lower="-1.05" upper="1.05" velocity="6.28" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_arm_flange_joint" type="fixed">
+    <origin rpy="-3.1416 0 0" xyz="0 0 -0.039" />
+    <parent link="right_wrist_roll_link" />
+    <child link="right_arm_flange_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="mic_joint" type="fixed">
+    <origin rpy="3.14159265358978 0.256557223795542 -3.14159265358978" xyz="0.0206233260819667 0 0.147422863179956" />
+    <parent link="waist_yaw_link" />
+    <child link="mic_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_drv_hang_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.1 0.166 -0.02975" />
+    <parent link="base_link" />
+    <child link="left_drv_hang_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="50" lower="-0.35" upper="0.35" velocity="50" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="left_drv_wheel_joint" type="continuous">
+    <origin rpy="0 0 0" xyz="-0.1 -0.166 0.02975" />
+    <parent link="left_drv_hang_link" />
+    <child link="left_drv_wheel_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="15" velocity="300" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_drv_hang_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.1 -0.166 -0.02975" />
+    <parent link="base_link" />
+    <child link="right_drv_hang_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="50" lower="-0.35" upper="0.35" velocity="50" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="right_drv_wheel_joint" type="continuous">
+    <origin rpy="0 0 0" xyz="-0.1 0.166 0.02975" />
+    <parent link="right_drv_hang_link" />
+    <child link="right_drv_wheel_link" />
+    <axis xyz="0 1 0" />
+    <limit effort="15" velocity="300" />
+    <dynamics damping="0.0" friction="0.0" />
+  </joint>
+  <joint name="lidar_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.1875 0.1145 0.1089" />
+    <parent link="base_link" />
+    <child link="lidar_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="left_hand_link">
+    <inertial>
+      <origin xyz="-0.00718397232462035 -0.00342395518292698 -0.0584832405332602" rpy="0 0 0" />
+      <mass value="0.529961023577223" />
+      <inertia ixx="0.000480653113997558" ixy="5.6276926629699E-06" ixz="-4.05859709772904E-05" iyy="0.00067789113848308" iyz="-4.83494002678735E-06" izz="0.00034697306572534" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_link.STL" />
+      </geometry>
+      <material name="left_hand_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_thumb_bend_link">
+    <inertial>
+      <origin xyz="0.0145290714760328 0.000901344264936247 -0.000127911758588877" rpy="0 0 0" />
+      <mass value="0.0098553409170395" />
+      <inertia ixx="5.42977914410068E-07" ixy="-1.16969836118924E-08" ixz="-3.74492329986334E-08" iyy="1.29130197093564E-06" iyz="-1.5496972766742E-09" izz="1.30457824480983E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_thumb_bend_link.STL" />
+      </geometry>
+      <material name="left_hand_thumb_bend_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_thumb_rota_link1">
+    <inertial>
+      <origin xyz="0.0279279151977349 0.000121046050863875 -0.000277543472497595" rpy="0 0 0" />
+      <mass value="0.153197010050709" />
+      <inertia ixx="2.41523784234409E-05" ixy="6.62856100469595E-06" ixz="1.88729265232125E-07" iyy="4.7191218462316E-05" iyz="1.13949521391224E-07" izz="5.6212272955421E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_thumb_rota_link1.STL" />
+      </geometry>
+      <material name="left_hand_thumb_rota_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_thumb_rota_link2">
+    <inertial>
+      <origin xyz="0.0224529466888815 0.000690615200902365 0.00314278985524262" rpy="0 0 0" />
+      <mass value="0.0374009578136616" />
+      <inertia ixx="3.98060244076823E-06" ixy="4.94846156827651E-07" ixz="1.18267329781539E-07" iyy="8.21784089346997E-06" iyz="6.13556519818818E-08" izz="9.54038333156961E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_thumb_rota_link2.STL" />
+      </geometry>
+      <material name="left_hand_thumb_rota_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_thumb_rota_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="left_hand_thumb_rota_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_index_bend_link">
+    <inertial>
+      <origin xyz="-0.000134544831370011 -0.000675884062860156 0.00420851049165961" rpy="0 0 0" />
+      <mass value="0.0677836037392838" />
+      <inertia ixx="2.16567127431793E-05" ixy="1.17519873383444E-08" ixz="-8.90740188704384E-08" iyy="2.09681513604224E-05" iyz="6.68676922531736E-07" izz="3.39515033610064E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_index_bend_link.STL" />
+      </geometry>
+      <material name="left_hand_index_bend_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_index_rota_link1">
+    <inertial>
+      <origin xyz="0.000139769333493966 0.000800517079915854 -0.0356038561271479" rpy="0 0 0" />
+      <mass value="0.0630216014538817" />
+      <inertia ixx="2.0518746365106E-05" ixy="7.80218143369854E-09" ixz="-4.29054701209884E-07" iyy="1.92422615292432E-05" iyz="-2.4702784768408E-07" izz="4.15027341232346E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_index_rota_link1.STL" />
+      </geometry>
+      <material name="left_hand_index_rota_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_index_rota_link2">
+    <inertial>
+      <origin xyz="0.000338569414886528 -1.93676040351407E-05 -0.0231328539120741" rpy="0 0 0" />
+      <mass value="0.0179923076570599" />
+      <inertia ixx="3.01810067223025E-06" ixy="-4.92126455642096E-10" ixz="-9.09991288403927E-08" iyy="3.0198354354144E-06" iyz="-5.99900012810543E-08" izz="9.885388987729E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_index_rota_link2.STL" />
+      </geometry>
+      <material name="left_hand_index_rota_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_index_rota_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="left_hand_index_rota_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_mid_link1">
+    <inertial>
+      <origin xyz="0.000139769503048257 0.00080051681932813 -0.0356038562198462" rpy="0 0 0" />
+      <mass value="0.0630216000876532" />
+      <inertia ixx="2.0518746354026E-05" ixy="7.80206454050682E-09" ixz="-4.29054815974796E-07" iyy="1.92422617602022E-05" iyz="-2.47027801809116E-07" izz="4.15027323551749E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_mid_link1.STL" />
+      </geometry>
+      <material name="left_hand_mid_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_mid_link2">
+    <inertial>
+      <origin xyz="0.000338571504924487 -1.93625114516685E-05 -0.0231328477388325" rpy="0 0 0" />
+      <mass value="0.0179922971238626" />
+      <inertia ixx="3.01809863607458E-06" ixy="-4.91830289601756E-10" ixz="-9.09984854679422E-08" iyy="3.01983397037226E-06" iyz="-5.99889522310673E-08" izz="9.88538040128258E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_mid_link2.STL" />
+      </geometry>
+      <material name="left_hand_mid_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_mid_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="left_hand_mid_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_ring_link1">
+    <inertial>
+      <origin xyz="0.000139769503829958 0.00080051746545018 -0.0356038550320788" rpy="0 0 0" />
+      <mass value="0.0630216034004235" />
+      <inertia ixx="2.05187480603073E-05" ixy="7.80204473072652E-09" ixz="-4.29055143702643E-07" iyy="1.92422630398686E-05" iyz="-2.47028634316192E-07" izz="4.15027377034858E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_ring_link1.STL" />
+      </geometry>
+      <material name="left_hand_ring_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_ring_link2">
+    <inertial>
+      <origin xyz="0.000338569362970571 -1.93675642107764E-05 -0.0231328537916428" rpy="0 0 0" />
+      <mass value="0.0179923074393582" />
+      <inertia ixx="3.01810064426992E-06" ixy="-4.92130070945092E-10" ixz="-9.09991388750487E-08" iyy="3.0198354064253E-06" iyz="-5.99899932123125E-08" izz="9.88538891512388E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_ring_link2.STL" />
+      </geometry>
+      <material name="left_hand_ring_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_ring_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="left_hand_ring_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_pinky_link1">
+    <inertial>
+      <origin xyz="0.000139769403140894 0.000800517208403269 -0.0356038550457389" rpy="0 0 0" />
+      <mass value="0.0630216018833023" />
+      <inertia ixx="2.05187477543832E-05" ixy="7.80212984947717E-09" ixz="-4.29055030397585E-07" iyy="1.92422628106822E-05" iyz="-2.47028571410968E-07" izz="4.15027354474908E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_pinky_link1.STL" />
+      </geometry>
+      <material name="left_hand_pinky_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_pinky_link2">
+    <inertial>
+      <origin xyz="0.000338573187645894 -1.93618349248192E-05 -0.0231328439241562" rpy="0 0 0" />
+      <mass value="0.0179922893932107" />
+      <inertia ixx="3.01809788005842E-06" ixy="-4.91751568021702E-10" ixz="-9.09983567107085E-08" iyy="3.0198329418105E-06" iyz="-5.99887920223039E-08" izz="9.8853806652991E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/left_hand_pinky_link2.STL" />
+      </geometry>
+      <material name="left_hand_pinky_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_hand_pinky_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="left_hand_pinky_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <joint name="left_hand_thumb_bend_joint" type="revolute">
+    <origin xyz="0.0228 -0.0095 -0.0305" rpy="0 0 0" />
+    <parent link="left_hand_link" />
+    <child link="left_hand_thumb_bend_link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="0" upper="1.83" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_thumb_rota_joint1" type="revolute">
+    <origin xyz="0.028599 -0.0083177 0.00178" rpy="-0.2618 0 -0.0407" />
+    <parent link="left_hand_thumb_bend_link" />
+    <child link="left_hand_thumb_rota_link1" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.05" upper="1.57" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_thumb_rota_joint2" type="revolute">
+    <origin xyz="0.0553 0 0" rpy="0 0 0" />
+    <parent link="left_hand_thumb_rota_link1" />
+    <child link="left_hand_thumb_rota_link2" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.17" upper="1.83" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_thumb_rota_joint3" type="fixed">
+    <origin xyz="0.0504017317642718 0 0" rpy="0 0 0" />
+    <parent link="left_hand_thumb_rota_link2" />
+    <child link="left_hand_thumb_rota_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_hand_index_bend_joint" type="revolute">
+    <origin xyz="0.0265 -0.0065 -0.0899" rpy="0 0 0" />
+    <parent link="left_hand_link" />
+    <child link="left_hand_index_bend_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.175" upper="0.175" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_index_joint1" type="revolute">
+    <origin xyz="0 0 -0.0178" rpy="0 0 0" />
+    <parent link="left_hand_index_bend_link" />
+    <child link="left_hand_index_rota_link1" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_index_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="left_hand_index_rota_link1" />
+    <child link="left_hand_index_rota_link2" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_index_rota_joint3" type="fixed">
+    <origin xyz="0 0 -0.0424999999999991" rpy="0 0 0" />
+    <parent link="left_hand_index_rota_link2" />
+    <child link="left_hand_index_rota_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_hand_mid_joint1" type="revolute">
+    <origin xyz="0.004 -0.0065 -0.1082" rpy="0 0 0" />
+    <parent link="left_hand_link" />
+    <child link="left_hand_mid_link1" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_mid_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="left_hand_mid_link1" />
+    <child link="left_hand_mid_link2" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_mid_joint3" type="fixed">
+    <origin xyz="0 0 -0.0424999999999995" rpy="0 0 0" />
+    <parent link="left_hand_mid_link2" />
+    <child link="left_hand_mid_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_hand_ring_joint1" type="revolute">
+    <origin xyz="-0.016 -0.0065 -0.1052" rpy="0 0 0" />
+    <parent link="left_hand_link" />
+    <child link="left_hand_ring_link1" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_ring_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="left_hand_ring_link1" />
+    <child link="left_hand_ring_link2" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_ring_joint3" type="fixed">
+    <origin xyz="0 0 -0.0425" rpy="0 0 0" />
+    <parent link="left_hand_ring_link2" />
+    <child link="left_hand_ring_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_hand_pinky_joint1" type="revolute">
+    <origin xyz="-0.036 -0.0065 -0.1022" rpy="0 0 0" />
+    <parent link="left_hand_link" />
+    <child link="left_hand_pinky_link1" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_pinky_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="left_hand_pinky_link1" />
+    <child link="left_hand_pinky_link2" />
+    <axis xyz="-1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="left_hand_pinky_joint3" type="fixed">
+    <origin xyz="0 0 -0.0424999999999995" rpy="0 0 0" />
+    <parent link="left_hand_pinky_link2" />
+    <child link="left_hand_pinky_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="left_hand_mount_joint" type="fixed">
+    <origin xyz="0 0 -0.039" rpy="0 0 0" />
+    <parent link="left_wrist_roll_link" />
+    <child link="left_hand_link" />
+  </joint>
+  <link name="right_hand_link">
+    <inertial>
+      <origin xyz="-0.00713969600456059 0.00342243593256283 -0.0584806731230685" rpy="0 0 0" />
+      <mass value="0.530025137189824" />
+      <inertia ixx="0.000480675299127658" ixy="-5.70774350447044E-06" ixz="-3.94757992682007E-05" iyy="0.000677544052393642" iyz="4.84926198036181E-06" izz="0.000346610500441846" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_link.STL" />
+      </geometry>
+      <material name="right_hand_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_thumb_bend_link">
+    <inertial>
+      <origin xyz="0.0145290801349471 -0.000901302744009009 -0.000127925728837824" rpy="0 0 0" />
+      <mass value="0.0098552942780609" />
+      <inertia ixx="5.42973961076784E-07" ixy="1.1697377817489E-08" ixz="-3.74480550329303E-08" iyy="1.29129949885877E-06" iyz="1.54918667172288E-09" izz="1.30457450474268E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_thumb_bend_link.STL" />
+      </geometry>
+      <material name="right_hand_thumb_bend_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_thumb_rota_link1">
+    <inertial>
+      <origin xyz="0.0279237160722458 -0.000127602868102849 -0.000272577361780019" rpy="0 0 0" />
+      <mass value="0.153264803291678" />
+      <inertia ixx="2.4165365258545E-05" ixy="-6.63197358473128E-06" ixz="1.94475216115701E-07" iyy="4.72108607465942E-05" iyz="-1.01931561408839E-07" izz="5.62288901300273E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_thumb_rota_link1.STL" />
+      </geometry>
+      <material name="right_hand_thumb_rota_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_thumb_rota_link2">
+    <inertial>
+      <origin xyz="0.0224697187075982 -0.000691342225602463 0.00302232046900801" rpy="0 0 0" />
+      <mass value="0.0374003730407777" />
+      <inertia ixx="3.98187483395831E-06" ixy="-4.9463629774215E-07" ixz="1.48034880030095E-07" iyy="8.21760971089748E-06" iyz="-5.85388102153786E-08" izz="9.53856476569885E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_thumb_rota_link2.STL" />
+      </geometry>
+      <material name="right_hand_thumb_rota_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_thumb_rota_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="right_hand_thumb_rota_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_index_bend_link">
+    <inertial>
+      <origin xyz="8.08448802515592E-05 0.000675884062860609 0.00420851049166139" rpy="0 0 0" />
+      <mass value="0.0677836037392839" />
+      <inertia ixx="2.16567127431793E-05" ixy="9.29177767371407E-09" ixz="2.1345292815894E-07" iyy="2.09689353738481E-05" iyz="-6.68676922531782E-07" izz="3.39593434952634E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_index_bend_link.STL" />
+      </geometry>
+      <material name="right_hand_index_bend_link_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_index_rota_link1">
+    <inertial>
+      <origin xyz="-0.000139769529292743 -0.0008005173406112 -0.0356038554391181" rpy="0 0 0" />
+      <mass value="0.0630216027459696" />
+      <inertia ixx="2.05187473304044E-05" ixy="7.80203520045171E-09" ixz="4.29054958401514E-07" iyy="1.92422623666435E-05" iyz="2.47028335879796E-07" izz="4.15027364465252E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_index_rota_link1.STL" />
+      </geometry>
+      <material name="right_hand_index_rota_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_index_rota_link2">
+    <inertial>
+      <origin xyz="-0.000338569409191088 1.93676000460963E-05 -0.0231328539090889" rpy="0 0 0" />
+      <mass value="0.0179923076356481" />
+      <inertia ixx="3.01810066952146E-06" ixy="-4.92126710010375E-10" ixz="9.0999129965313E-08" iyy="3.01983543305207E-06" iyz="5.99900021060723E-08" izz="9.88538897829343E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_index_rota_link2.STL" />
+      </geometry>
+      <material name="right_hand_index_rota_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_index_rota_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="right_hand_index_rota_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_mid_link1">
+    <inertial>
+      <origin xyz="-0.000139769452255069 -0.000800516966578778 -0.0356038561997856" rpy="0 0 0" />
+      <mass value="0.0630216005457211" />
+      <inertia ixx="2.05187463723375E-05" ixy="7.80208491082156E-09" ixz="4.29054729251827E-07" iyy="1.92422616109533E-05" iyz="2.47027898316091E-07" izz="4.15027334868904E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_mid_link1.STL" />
+      </geometry>
+      <material name="right_hand_mid_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_mid_link2">
+    <inertial>
+      <origin xyz="-0.000338569410644367 1.93676002657236E-05 -0.0231328539105626" rpy="0 0 0" />
+      <mass value="0.0179923076388667" />
+      <inertia ixx="3.01810066972044E-06" ixy="-4.92126597550988E-10" ixz="9.09991296960493E-08" iyy="3.01983543347029E-06" iyz="5.99900021064019E-08" izz="9.88538897954892E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_mid_link2.STL" />
+      </geometry>
+      <material name="right_hand_mid_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_mid_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="right_hand_mid_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_ring_link1">
+    <inertial>
+      <origin xyz="-0.000139769594263359 -0.000800517227339018 -0.0356038552802108" rpy="0 0 0" />
+      <mass value="0.0630216021699602" />
+      <inertia ixx="2.05187476755252E-05" ixy="7.80199293997393E-09" ixz="4.29055082722493E-07" iyy="1.92422628261764E-05" iyz="2.47028487672885E-07" izz="4.15027358505553E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_ring_link1.STL" />
+      </geometry>
+      <material name="right_hand_ring_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_ring_link2">
+    <inertial>
+      <origin xyz="-0.00033857292489315 1.9362209649449E-05 -0.0231328478093387" rpy="0 0 0" />
+      <mass value="0.0179922978524175" />
+      <inertia ixx="3.01809858290111E-06" ixy="-4.91620007394315E-10" ixz="9.09983307330798E-08" iyy="3.01983382489043E-06" iyz="5.99889823171253E-08" izz="9.88537681686488E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_ring_link2.STL" />
+      </geometry>
+      <material name="right_hand_ring_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_ring_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="right_hand_ring_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_pinky_link1">
+    <inertial>
+      <origin xyz="-0.000139769192568043 -0.000800516820207079 -0.035603856454747" rpy="0 0 0" />
+      <mass value="0.0630215991316208" />
+      <inertia ixx="2.05187455958907E-05" ixy="7.80222924483364E-09" ixz="4.29054564778114E-07" iyy="1.92422608092939E-05" iyz="2.47027716010302E-07" izz="4.15027320974138E-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_pinky_link1.STL" />
+      </geometry>
+      <material name="right_hand_pinky_link1_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_pinky_link2">
+    <inertial>
+      <origin xyz="-0.000338569414719665 1.93675989681556E-05 -0.0231328539159371" rpy="0 0 0" />
+      <mass value="0.0179923076462156" />
+      <inertia ixx="3.0181006709957E-06" ixy="-4.92126474056121E-10" ixz="9.0999128816634E-08" iyy="3.01983543495617E-06" iyz="5.99900018674419E-08" izz="9.88538897929235E-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://q5_description/meshes/right_hand_pinky_link2.STL" />
+      </geometry>
+      <material name="right_hand_pinky_link2_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_hand_pinky_tip">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.001" />
+      </geometry>
+      <material name="right_hand_pinky_tip_opaque_0">
+        <color rgba="0.72 0.74 0.78 1" />
+      </material>
+    </visual>
+  </link>
+  <joint name="right_hand_thumb_bend_joint" type="revolute">
+    <origin xyz="0.0228 0.0095 -0.0305" rpy="0 0 0" />
+    <parent link="right_hand_link" />
+    <child link="right_hand_thumb_bend_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="0" upper="1.83" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_thumb_rota_joint1" type="revolute">
+    <origin xyz="0.028599 0.0083177 0.00178" rpy="0.2618 0 0.0407" />
+    <parent link="right_hand_thumb_bend_link" />
+    <child link="right_hand_thumb_rota_link1" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.05" upper="1.57" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_thumb_rota_joint2" type="revolute">
+    <origin xyz="0.0553 0 0" rpy="0 0 0" />
+    <parent link="right_hand_thumb_rota_link1" />
+    <child link="right_hand_thumb_rota_link2" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.175" upper="1.83" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_thumb_rota_joint3" type="fixed">
+    <origin xyz="0.0504024546888781 0 0" rpy="0 0 0" />
+    <parent link="right_hand_thumb_rota_link2" />
+    <child link="right_hand_thumb_rota_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_hand_index_bend_joint" type="revolute">
+    <origin xyz="0.0265 0.0065 -0.0899" rpy="0 0 0" />
+    <parent link="right_hand_link" />
+    <child link="right_hand_index_bend_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.175" upper="0.175" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_index_joint1" type="revolute">
+    <origin xyz="0 0 -0.0178" rpy="0 0 0" />
+    <parent link="right_hand_index_bend_link" />
+    <child link="right_hand_index_rota_link1" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_index_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="right_hand_index_rota_link1" />
+    <child link="right_hand_index_rota_link2" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_index_rota_joint3" type="fixed">
+    <origin xyz="0 0 -0.0424999999999993" rpy="0 0 0" />
+    <parent link="right_hand_index_rota_link2" />
+    <child link="right_hand_index_rota_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_hand_mid_joint1" type="revolute">
+    <origin xyz="0.004 0.0065 -0.1082" rpy="0 0 0" />
+    <parent link="right_hand_link" />
+    <child link="right_hand_mid_link1" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_mid_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="right_hand_mid_link1" />
+    <child link="right_hand_mid_link2" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.94" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_mid_joint3" type="fixed">
+    <origin xyz="0 0 -0.042107" rpy="0 0 0" />
+    <parent link="right_hand_mid_link2" />
+    <child link="right_hand_mid_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_hand_ring_joint1" type="revolute">
+    <origin xyz="-0.016 0.0065 -0.1052" rpy="0 0 0" />
+    <parent link="right_hand_link" />
+    <child link="right_hand_ring_link1" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_ring_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="right_hand_ring_link1" />
+    <child link="right_hand_ring_link2" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_ring_joint3" type="fixed">
+    <origin xyz="0 0 -0.0424999999999994" rpy="0 0 0" />
+    <parent link="right_hand_ring_link2" />
+    <child link="right_hand_ring_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_hand_pinky_joint1" type="revolute">
+    <origin xyz="-0.036 0.0065 -0.1022" rpy="0 0 0" />
+    <parent link="right_hand_link" />
+    <child link="right_hand_pinky_link1" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="1.1" velocity="8.63" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_pinky_joint2" type="revolute">
+    <origin xyz="0 0 -0.0558" rpy="0 0 0" />
+    <parent link="right_hand_pinky_link1" />
+    <child link="right_hand_pinky_link2" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.92" effort="0.4" velocity="14.38" />
+    <dynamics damping="1" friction="1" />
+  </joint>
+  <joint name="right_hand_pinky_joint3" type="fixed">
+    <origin xyz="0 0 -0.0425" rpy="0 0 0" />
+    <parent link="right_hand_pinky_link2" />
+    <child link="right_hand_pinky_tip" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="right_hand_mount_joint" type="fixed">
+    <origin xyz="0 0 -0.039" rpy="0 0 0" />
+    <parent link="right_wrist_roll_link" />
+    <child link="right_hand_link" />
+  </joint>
+</robot>

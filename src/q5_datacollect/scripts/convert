@@ -1,0 +1,168 @@
+#!/bin/bash
+# 转换一个任务的全部 bag → LeRobot v2.1 数据集（路径/任务名/state 话题全自动，跟 record 对称）
+#
+# 用法：ros2 run q5_datacollect convert <task> [选项]
+#   <task>          任务名：读 <root>/coll_<task>/，写 <root>/coll_<task>/<task>/
+#   --root DIR      采集根目录（默认：机器人上 ~/xiaodan，rospc 上 ~/datasets —— 自动选）
+#   --state-topic T state 话题（默认 auto：**从 bag 里认**——有 /joint_states 就用它，
+#                   否则 /joint_states_relay；机器人本机录的 bag 不走 relay，不用手写）
+#   --action M      command（默认，真命令）/ echo（action 取 state，做对照集）
+#   --npz           保留 npz（默认删：它只是打 parquet 的中间产物；没 pyarrow 又不加它就直接报错退出）
+#   --force         已有数据集时删掉重转（默认拒绝，防误删）
+#
+# 要更多开关（--fps、--pack 只打 parquet）直接用底层入口：
+#   ros2 run q5_datacollect bag2lerobot --help
+#
+# bag2lerobot 的输出（每集帧数、跳过计数、两路命令/state 与图像的时间差、命令流断流）
+# 会 tee 到 <bags>/convert.log —— 那些是数据集本体里看不出来的东西，别只留在终端上。
+#
+# 退出码：0 成功 / 2 参数错 / 3 前置条件不满足（没 bag、输出目录已存在或上次没跑完）
+#         bag2lerobot 自己的非零 rc 原样透传
+
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=211
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# 工作空间 install：布局有两套 —— rospc 是 merge-install（<ws>/install/lib/q5_datacollect/），
+# 机器人在 ~/xiaodan 且是 isolated（<ws>/install/q5_datacollect/lib/q5_datacollect/）。
+# 所以**从脚本自身位置往上找 setup.bash**，再退回两种已知布局 —— 别写死 $HOME/q5_ws：
+# 9/18 实测机器人上那行报 No such file or directory。
+_ws=0
+_d=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+for _i in 1 2 3 4 5; do
+  _d=$(dirname "$_d")
+  if [ -f "$_d/setup.bash" ]; then source "$_d/setup.bash"; _ws=1; break; fi
+done
+if [ "$_ws" = 0 ]; then
+  for _w in "$HOME/q5_ws/install/setup.bash" "$HOME/xiaodan/q5_ws/install/setup.bash"; do
+    if [ -f "$_w" ]; then source "$_w"; _ws=1; break; fi
+  done
+fi
+[ "$_ws" = 1 ] || echo "⚠ 没找到工作空间的 setup.bash（q5_ws 没装？）—— 消息类型可能解析不出来" >&2
+# 机器人上 xbot_common_interfaces 在 SDK / teleop_client 的 install 里（rospc 无此目录，跳过）
+for _s in "$HOME/ros2_sdk-dev/install/setup.bash" "$HOME/xiaodan/ros2_sdk-dev/install/setup.bash" \
+          "$HOME/teleop_client/install/setup.bash" "$HOME/xiaodan/teleop_client/install/setup.bash"; do
+  if [ -f "$_s" ]; then source "$_s"; fi
+done
+# CycloneDDS 配置：rospc 在 ~/.ros/，机器人在 ~/xiaodan/ —— 不写死路径
+for _c in "$HOME/.ros/cyclonedds_q5.xml" "$HOME/xiaodan/cyclonedds_q5.xml"; do
+  if [ -f "$_c" ]; then export CYCLONEDDS_URI="file://$_c"; break; fi
+done
+
+# 默认 root：机器人上数据在 ~/xiaodan/（本机约定），rospc 上在 ~/datasets/ —— 按目录存在与否选
+if [ -d "$HOME/xiaodan" ]; then root="$HOME/xiaodan"; else root="$HOME/datasets"; fi
+task=""; state="auto"; action="command"; force=0; npz=0
+
+# 家目录缩成 ~：用前缀剥离，别用 ${x/#$HOME/~} —— 那个写法里的 ~ 会被波浪号展开回 $HOME，
+# 等于"把前缀替换成它自己"，看着像没生效（9/17 实测踩过）
+short() {
+  case "$1" in
+    "$HOME"/*) printf '~%s' "${1#$HOME}";;
+    *)         printf '%s' "$1";;
+  esac
+}
+# 和 record 同一套参数加固：拼错的 --xxx 不能落成任务名；选项后面不能空着，也不能
+# 把下一个选项当成值（`convert t --root --force` 会把 --force 吃成 root）。下面 --force
+# 是会 rm -rf 输出目录的，所以参数错必须**在动手之前**就红。
+# 参数一律用 "${2:-}" 取：缺值检查本身也得在"变量根本没绑"时成立，别依赖
+# "没开 set -u 所以空展开不报错"这条隐含前提（哪天加了 set -u 就炸在这儿）。
+need() {
+  if [ -z "${2:-}" ]; then
+    echo "✗ $1 后面缺参数值" >&2; exit 2
+  fi
+  case "$2" in
+    --*) echo "✗ $1 后面缺参数值（下一个是选项 $2）" >&2; exit 2;;
+  esac
+}
+# 同一个选项给两次时**后者覆盖前者**（命令行惯例，同 gcc -O1 -O2）。不为此加"已设置"
+# 标志：多一份状态就得多一套报错文案，而真正会出事的"值被吃成选项/空值"已由 need() 拦住。
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --root)        need --root "${2:-}";        root="$2";   shift 2;;
+    --state-topic) need --state-topic "${2:-}"; state="$2";  shift 2;;
+    --action)      need --action "${2:-}";      action="$2"; shift 2;;
+    --npz)         npz=1;       shift;;
+    --force)       force=1;     shift;;
+    -h|--help)     sed -n '2,20p' "$0"; exit 0;;
+    --*) echo "✗ 未知选项：$1（选项要写全；任务名放最前面、不带 --）" >&2; exit 2;;
+    *)
+      # 第二个任务名以前会**静默顶掉**第一个（`convert a b` 转的是 coll_b/）——
+      # 参数写重了要当场红，别等发现转的是别的任务
+      if [ -n "$task" ]; then
+        echo "✗ 只能指定一个任务名（多出来的：$1）" >&2; exit 2
+      fi
+      task="$1"; shift;;
+  esac
+done
+if [ -z "$task" ]; then
+  echo "用法：ros2 run q5_datacollect convert <task> [--root DIR] [--state-topic T] [--action M] [--npz] [--force]" >&2
+  exit 2
+fi
+# --action 也在这里认准：拼错了要等到 bag2lerobot 的 argparse 才报，而 --force 在那之前
+# 已经把旧数据集 rm -rf 掉了
+case "$action" in
+  command|echo) ;;
+  *) echo "✗ --action 只认 command / echo（实得 '$action'）" >&2; exit 2;;
+esac
+# 任务名会进路径，也就进了下面 --force 那个 rm -rf 的目标：`convert .. --force` 的
+# out="$root/coll_../.." 正好落回 $root，会删掉整个采集根目录（实测 -e 为真、真的会到 rm）。
+# 带 /、以 . 开头、含 .. 的名字一律不收（正常任务名都是字母数字下划线，中文名也不受影响）。
+case "$task" in
+  */*|.*|*..*) echo "✗ 任务名不能带 /、不能以 . 开头、不能含 ..（实得 '$task'）" >&2; exit 2;;
+  # 空白不构成路径穿越，但会让 "重录：record <task> --ep N" 这类提示和复制粘贴不可靠。
+  # 用 [[:space:]] 而不是枚举字符：UTF-8 汉字的字节都 ≥0x80、不含 ASCII 空白字节，
+  # 所以这条即使在 C locale（非交互 ssh 常见）下也不会误伤中文任务名。
+  *[[:space:]]*) echo "✗ 任务名不能含空格/换行（实得 '$task'）" >&2; exit 2;;
+esac
+
+bags="$root/coll_$task"
+out="$bags/$task"
+if [ ! -d "$bags" ]; then
+  echo "✗ 没有 $(short "$bags")（任务名写错了？bag 应在 <root>/coll_<task>/ 下）" >&2
+  exit 3
+fi
+if [ -e "$out" ]; then
+  if [ "$force" != 1 ]; then
+    # 判据是**目录在不在**，不是 meta/info.json 在不在：info.json 是最后一步才写的，
+    # 所以"跑到一半被打断"留下的目录里没有它 —— 只判 info.json 会把脏目录当干净的复用，
+    # 留下上一轮那些"新集数里已经没有这个号"的 parquet/mp4 孤儿（实测：info.json 说 3 集、
+    # data/ 里躺着第 4 集的 parquet）
+    if [ -e "$out/meta/info.json" ]; then
+      echo "✗ $(short "$out") 已存在（不覆盖）。重转：convert $task --force" >&2
+    else
+      echo "✗ $(short "$out") 存在，但没有 meta/info.json —— 上次转换没跑完，里面可能是半成品" >&2
+      echo "  看一眼：ls $(short "$out")；确认不要了就 convert $task --force（会 rm -rf 整个目录）" >&2
+    fi
+    exit 3
+  fi
+  # 上面已经把任务名限死成不含 / 和 .，这几条现在到不了；留着是**最后一道闸** ——
+  # rm -rf 的破坏力太大，宁可多判一次，将来谁放宽了任务名校验也删不到根目录上去
+  if [ -z "$out" ] || [ "$out" = "/" ] || [ "$out" = "$root" ] || [ "$out" = "$bags" ]; then
+    echo "✗ 拒绝删除异常目标路径：'$out'" >&2; exit 2
+  fi
+  echo "删掉旧数据集重转：$(short "$out")"
+  rm -rf "$out"
+fi
+
+echo "转换 $(short "$bags") → $(short "$out")"
+# 集号是**转换时按目录排序现编**的（bag2lerobot 的 enumerate(sorted(bags))）：缺一个目录 →
+# 它后面每一集的 episode_index 都前移一位 → keep_ranges.json 的全局行号、已训 checkpoint 的评估集静默错位。
+# 所以重录坏集要 record <task> --ep <原号> 占回那个号（record 也会提示）。
+echo "  ⚠ 集号 = 目录排序后的序号：重录坏集请 record $task --ep <原号> 占号，别删了另编新号（会让其后各集 index 前移）"
+echo "     （只认名字是 epNNN 且有 metadata.yaml 的目录；别的目录会被忽略并单独告警）"
+extra=""
+[ "$npz" = 1 ] && extra="--npz"
+# QC 留档：每集跳了多少帧、两路命令与图像的时间差、命令流在哪秒断了 —— 这些只在 bag2lerobot
+# 的输出里，数据集本体看不出来（npz 已删、parquet 的时间轴是等间隔合成的）。
+# 落在 **bag 目录**里而不是数据集目录里：--force 会 rm -rf 数据集，这份要活下来。
+# 而且必须**追加**（tee -a）：--force 重转正是"重录了坏集"那个场景，覆盖式 tee 会把上一轮
+# 唯一能复盘的记录冲掉（每段自带 "== 日期 时间" 头，追加就是历史）。
+qc_log="$bags/convert.log"
+{ echo "== $(date '+%F %T')  convert $task  --action $action --state-topic $state"
+  # 这份日志会跟着 bag 留下很久：把"集号≠目录名"这条约定写在数据旁边，免得半年后对不上号
+  echo "#  epNNN 只是目录名；数据集里的 episode_index = 目录排序后的**序号**（缺一集则其后全部前移）"
+  ros2 run q5_datacollect bag2lerobot "$bags" --task "$task" -o "$out" \
+          --state-topic "$state" --action "$action" $extra
+} 2>&1 | tee -a "$qc_log"
+rc=${PIPESTATUS[0]}          # 加管道之后 $? 是 tee 的，别把 0 当成功
+echo "QC 留档：$(short "$qc_log")"
+exit "$rc"

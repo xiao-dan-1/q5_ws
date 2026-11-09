@@ -1,0 +1,345 @@
+#!/bin/bash
+# 录制一集：4 话题契约 + 目录约定（录前体检在 preflight，不在本脚本）
+#
+# 用法：ros2 run q5_datacollect record <task> [选项]
+#   <task>          任务名；数据落在 <root>/coll_<task>/ep<NNN>/
+#   --root DIR      采集根目录（默认：机器人上 ~/xiaodan，rospc 上 ~/datasets —— 自动选）
+#   --state-topic T state 话题（默认 auto：**机器人本机**直取 /joint_states 原速；
+#                   **rospc 等跨机**走 /joint_states_relay（relay 的意义是限速 500Hz→60Hz））
+#                   **--check-only 时 auto 一律以 bag 里真有的那条为准**（复查别处录的 bag 时
+#                   本机推的话题不作数）；显式写 --state-topic auto 与省略同义
+#   --ep N          指定集号（从 1 起；默认自动取下一个空号）
+#   --sec N         录 N 秒自动停（默认手动 Ctrl-C）
+#                   **--check-only 时是同一个意思**：断言"这一集应当是 N 秒"（短于九成即判不可用）；不给就只报 Duration、不判
+#   --force         无实义，仅为兼容老命令保留（开录前检查已去掉）
+#   --check-only    不录，只对已存在的 <root>/coll_<task>/ep<NNN> 重跑录后自检（复查旧集 / 测自检本身）
+#
+# 录前体检（发布者个数/身份、相机速率）**不再内联**，要查就单独跑：
+#   ros2 run q5_datacollect preflight         只读，~7 秒，输出 ✓/⚠/✗ 清单
+# 为什么挪出去：判据只留一份（preflight），record 不再各持一套；内联那份还要多花 ~6 秒测速率。
+# 代价：record 不再拦你 —— 两个活源混流会污染 action 标签且录完拆不开，
+# 所以开录前请自己看一眼 preflight（历史故障：simple_trajectory_server + teleopX_node 同发手命令）。
+#
+# 退出码：0 成功 / 1 环境不全（ros2 不在 PATH）/ 2 参数错 / 3 录后自检不过（这一集不可用）
+# 参数错含：未知 --xxx、选项后缺值、--sec/--ep 不是合法的十进制数（超 9 位也拦）、
+#           任务名含 / 或 . 或空白（都当场 exit 2，不落成任务名、不动文件系统）
+
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=211
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# 工作空间 install：布局有两套 —— rospc 是 merge-install（<ws>/install/lib/q5_datacollect/），
+# 机器人在 ~/xiaodan 且是 isolated（<ws>/install/q5_datacollect/lib/q5_datacollect/）。
+# 所以**从脚本自身位置往上找 setup.bash**，再退回两种已知布局 —— 别写死 $HOME/q5_ws：
+# 9/18 实测机器人上那行报 No such file or directory（没 source 上 → 命令话题类型解析不出来）。
+_ws=0
+_d=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+for _i in 1 2 3 4 5; do
+  _d=$(dirname "$_d")
+  if [ -f "$_d/setup.bash" ]; then source "$_d/setup.bash"; _ws=1; break; fi
+done
+if [ "$_ws" = 0 ]; then
+  for _w in "$HOME/q5_ws/install/setup.bash" "$HOME/xiaodan/q5_ws/install/setup.bash"; do
+    if [ -f "$_w" ]; then source "$_w"; _ws=1; break; fi
+  done
+fi
+[ "$_ws" = 1 ] || echo "⚠ 没找到工作空间的 setup.bash（q5_ws 没装？）—— 命令话题的类型可能解析不出来" >&2
+# 机器人上 xbot_common_interfaces 在 SDK / teleop_client 的 install 里（rospc 无此目录，跳过）。
+# 少 source 它们 → 两条命令话题的消息类型解析不出来 → rosbag2 只 WARN 然后**静默跳过**，
+# bag 里就少了 action（9/17 冒烟实测：arm_cmd=0 hand_cmd=0）。
+for _s in "$HOME/ros2_sdk-dev/install/setup.bash" "$HOME/xiaodan/ros2_sdk-dev/install/setup.bash" \
+          "$HOME/teleop_client/install/setup.bash" "$HOME/xiaodan/teleop_client/install/setup.bash"; do
+  if [ -f "$_s" ]; then source "$_s"; fi
+done
+# CycloneDDS 配置：rospc 在 ~/.ros/，机器人在 ~/xiaodan/ —— 不能写死路径：
+# 写死 rospc 那份时机器人在 ~/.ros/ 下找不到文件 → rmw_create_node 失败 → 录不出 bag（9/17 冒烟实测）
+for _c in "$HOME/.ros/cyclonedds_q5.xml" "$HOME/xiaodan/cyclonedds_q5.xml"; do
+  if [ -f "$_c" ]; then export CYCLONEDDS_URI="file://$_c"; break; fi
+done
+[ -n "$CYCLONEDDS_URI" ] || echo "⚠ 没找到 cyclonedds_q5.xml，退回 DDS 默认发现（跨机可能不稳）" >&2
+
+TOPICS=(/joint_states_relay
+        /camera/camera/color/image_raw/compressed
+        /wr1_controller/commands
+        /hand_controller/commands)
+# 后两条是"单写者"话题（发布者身份/个数由 preflight 查）
+
+task=""; ep=""; sec=""; state="auto"; state_explicit=""; checkonly=""
+# 默认 root：机器人上数据写在 ~/xiaodan/（本机约定），rospc 上写在 ~/datasets/ —— 按目录存在与否选，
+# 不用每集手写 --root（9/18：机器人上默认写成 $HOME/datasets 会落到约定树外面）
+if [ -d "$HOME/xiaodan" ]; then root="$HOME/xiaodan"; else root="$HOME/datasets"; fi
+# 选项缺值当场报错：`--root` 后面空着会静默变成 root=""（往 /coll_<task> 录），
+# 报出来的错来自 mkdir/rosbag2，看不出真因。未知的 --xxx 更不能落成任务名 ——
+# 打错一个字就会在数据集根目录里建出一个叫 --rrot 的目录。
+# 值是**下一个选项**也算缺值：`record t --root --sec 10` 以前会把 --sec 吃成 root、
+# 再把 10 吃成任务名 —— 路径和任务名双双改掉，还一声不响。
+# 参数一律用 "${2:-}" 取：缺值检查本身也得在"变量根本没绑"时成立，别依赖
+# "没开 set -u 所以空展开不报错"这条隐含前提（哪天加了 set -u 就炸在这儿）。
+need() {
+  if [ -z "${2:-}" ]; then
+    echo "✗ $1 后面缺参数值" >&2; exit 2
+  fi
+  case "$2" in
+    --*) echo "✗ $1 后面缺参数值（下一个是选项 $2）" >&2; exit 2;;
+  esac
+}
+# 同一个选项给两次时**后者覆盖前者**（命令行惯例，同 gcc -O1 -O2）。不为此加"已设置"
+# 标志：多一份状态就得多一套报错文案，而真正会出事的"值被吃成选项/空值"已由 need() 拦住。
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --root)  need --root "${2:-}";              root="$2"; shift 2;;
+    --state-topic)
+      need --state-topic "${2:-}"
+      state="$2"
+      # 显式传 auto 要**等同于不给**：auto 只是"默认值"的名字（record 里 = 按本机推）。
+      # 以前一律置 state_explicit=1，于是 `record t --check-only --state-topic auto` 会拿
+      # 本机推的话题去查别处录的 bag —— 正是 --check-only 要避免的跨机误判。
+      if [ "$2" = "auto" ]; then state_explicit=""; else state_explicit=1; fi
+      TOPICS[0]="$2"
+      shift 2
+      ;;
+    --ep)    need --ep "${2:-}";                ep="$2";   shift 2;;
+    --sec)   need --sec "${2:-}";               sec="$2";  shift 2;;
+    --force) shift;;              # 兼容老命令：检查已去掉，这个开关没用了
+    --check-only) checkonly=1; shift;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0;;
+    --*) echo "✗ 未知选项：$1（选项要写全；任务名放最前面、不带 --）" >&2; exit 2;;
+    *)
+      # 第二个任务名以前会**静默顶掉**第一个（`record a b` 录进 coll_b/）——
+      # 参数写重了要当场红，别等发现数据落在别的任务目录里
+      if [ -n "$task" ]; then
+        echo "✗ 只能指定一个任务名（多出来的：$1）" >&2; exit 2
+      fi
+      task="$1"; shift;;
+  esac
+done
+if [ -z "$task" ]; then
+  echo "用法：ros2 run q5_datacollect record <task> [--root DIR] [--state-topic T] [--ep N] [--sec N] [--force]" >&2
+  exit 2
+fi
+# 任务名会进路径，也就进了 --force 下 rm -rf 的目标：`convert .. --force` 的
+# out="$root/coll_../.." 正好落回 $root，会删掉整个采集根目录。带 / 或以 . 开头、
+# 或含 .. 的名字一律不收（正常任务名都是字母数字下划线，中文名也不受影响）。
+case "$task" in
+  */*|.*|*..*) echo "✗ 任务名不能带 /、不能以 . 开头、不能含 ..（实得 '$task'）" >&2; exit 2;;
+  # 空白不构成路径穿越，但会让 "重录：record <task> --ep N" 这类提示和复制粘贴不可靠。
+  # 用 [[:space:]] 而不是枚举字符：UTF-8 汉字的字节都 ≥0x80、不含 ASCII 空白字节，
+  # 所以这条即使在 C locale（非交互 ssh 常见）下也不会误伤中文任务名。
+  *[[:space:]]*) echo "✗ 任务名不能含空格/换行（实得 '$task'）" >&2; exit 2;;
+esac
+# 纯数字校验 + **位数上限**。上限不是洁癖：bash 的 10# 转换溢出**不报错、静默截断** ——
+# 实测 10#99999999999999999999 → 7766279631452241919。那样 `--ep` 会去建一个叫
+# ep7766279631452241919 的集目录（路径悄悄变了），`--sec` 会喂给 timeout 一个垃圾秒数。
+# 前导零按**十进制**读（08 = 8 秒）：老写法 *|0* 会把 08、010 一起拒掉。
+digits() {  # digits <选项名> <值>；空 = 没给，放行
+  case "${2:-}" in
+    '') return 0;;
+    *[!0-9]*) echo "✗ $1 要写纯数字（实得 '$2'）" >&2; exit 2;;
+  esac
+  if [ "${#2}" -gt 9 ]; then
+    echo "✗ $1 位数太多（最多 9 位，实得 '$2'）" >&2; exit 2
+  fi
+}
+digits --sec "$sec"
+digits --ep  "$ep"
+# --ep 还得 >0：自动编号就是 1 起的（上面 ep=$((last+1))，空目录 → 1），现存 4 个任务的
+# 15 集也全是 ep001 起。放个 ep000 进来只会让"集号"有两种来历（格式上都叫集号，
+# 一个自动编不出来、一个编得出来），后面按号排序的地方就得多想一层。
+if [ -n "$ep" ] && [ "$((10#$ep))" -le 0 ]; then
+  echo "✗ --ep 从 1 起（实得 '$ep'）" >&2; exit 2
+fi
+# --sec 还得 >0：0 会让 timeout 立刻返回，录出一集 0 秒的 bag
+if [ -n "$sec" ] && [ "$((10#$sec))" -le 0 ]; then
+  echo "✗ --sec 要写正整数秒（实得 '$sec'）" >&2; exit 2
+fi
+if ! command -v ros2 >/dev/null; then
+  echo "✗ ros2 不在 PATH —— setup.bash 没 source 上" >&2
+  exit 1
+fi
+
+# state 话题默认 auto，**按"在哪台机器上跑"分**（不是按有没有发布者 —— 那样会在 rospc 上误选原速）：
+#   * 机器人本机（有 teleop_client）：直取 /joint_states 原速 500Hz，不走 relay
+#   * 其它机器（rospc 跨机）：用 /joint_states_relay —— relay 的意义是**限速** 500Hz→60Hz，
+#     跨机传 500Hz 又重又没必要（这才是当年架 relay 的原因）
+# 首选没有发布者时才退回另一个，避免硬选一个空话题。
+if [ "$state" = "auto" ]; then
+  if [ -d "$HOME/teleop_client" ] || [ -d "$HOME/xiaodan/teleop_client" ]; then
+    state=/joint_states; _other=/joint_states_relay; _why="机器人本机直取原速，不走 relay"
+  else
+    state=/joint_states_relay; _other=/joint_states; _why="跨机录制走 relay（限速 500Hz→60Hz）"
+  fi
+  _n=$(ros2 topic info "$state" 2>/dev/null | sed -n 's/^Publisher count: //p')
+  if [ "${_n:-0}" -lt 1 ]; then
+    _n2=$(ros2 topic info "$_other" 2>/dev/null | sed -n 's/^Publisher count: //p')
+    if [ "${_n2:-0}" -ge 1 ]; then
+      _why="首选 $state 没发布者，退回"; state="$_other"
+    fi
+  fi
+  TOPICS[0]="$state"
+  echo "state 话题：$state（$_why）"
+else
+  echo "state 话题：$state（显式指定）"
+fi
+
+coll="$root/coll_$task"
+# 先不建目录：集号冲突等参数错时别在数据集根目录里留个空的 coll_<task>/
+if [ -z "$ep" ]; then
+  # 只认**纯数字**目录名：`ep009_old/` 这种备份/实验目录以前会让 `10#009_old` 算术失败 →
+  # ep 空 → 报"--ep 要写纯数字"（把责任推给用户，真因是那个目录）。10/14 实测复现过。
+  _dirs=$(ls -d "$coll"/ep[0-9]* 2>/dev/null | sed 's|.*/ep||')
+  # 位数也纳入"像不像集号"：ep99999999999999999999/ 这种名字会让 10# 静默截断，
+  # 编出来的下一个集号就成了垃圾数字 → 当成不认识的目录跳过
+  last=$(printf '%s\n' "$_dirs" | grep -xE '[0-9]{1,9}' | sort -n | tail -1)
+  _skip=$(printf '%s\n' "$_dirs" | grep -vxE '[0-9]{1,9}' | grep -v '^$' | tr '\n' ' ')
+  [ -z "$_skip" ] || echo "（跳过不像集号的目录：$_skip—— 要接着它往下编就显式 --ep（1-9 位））"
+  ep=$(( 10#${last:-0} + 1 ))
+  # 集号 9 位上限是**三处**共同约定（--ep 的 digits、扫描的 [0-9]{1,9}、这里）。
+  # 少了这一处就自相矛盾：已经有 ep999999999 时算出 1000000000，而上面刚打过
+  # "跳过不像集号的目录：1000000000" —— 下一轮它照样被跳过，于是**又编回同一个号**，
+  # 撞上已存在的目录（不会覆盖，但会卡死在"换个 --ep"上，而提示的那个号同样会被跳过）。
+  if [ "$ep" -gt 999999999 ]; then
+    echo "✗ 自动集号超 9 位上限（$coll 里已有 ep${last:-0}）—— 集目录不对劲，先看一眼再录" >&2
+    exit 2
+  fi
+else
+  # 10# 强制十进制：不加它 `$(( 008 + 1 ))` 会把 008 当八进制 → "value too great for base"，
+  # ep 空掉 → 路径退化成 coll_<task>/ep（10/12 实测：真往那儿录了一整集 56MB）；
+  # 同一族的坑还有 `printf "%03d" 070` —— 它不报错，静默算成 056。
+  ep=$(( 10#$ep ))
+fi
+# 算不出来、或 --ep 给的不是数字时宁可不录，也别往 coll_<task>/ep 这种路径里录
+case "$ep" in ''|*[!0-9]*) echo "✗ 集号算不出来（--ep 要写纯数字，如 --ep 8）" >&2; exit 2;; esac
+ep=$(printf "%03d" "$ep")
+out="$coll/ep$ep"
+if [ -n "$checkonly" ]; then
+  # 只判目录在不在；"目录在但没 metadata.yaml"= 没封包，交给下面的自检统一判 3
+  [ -d "$out" ] || { echo "✗ $out 不存在（--check-only 要指已录好的集；--ep 写对了吗）" >&2; exit 2; }
+  echo "############ 复查 $out ############"
+else
+  if [ -e "$out" ]; then
+    echo "✗ $out 已存在（换个 --ep，或先删掉）" >&2
+    exit 2
+  fi
+  mkdir -p "$coll"
+  echo "############ 录到 $out ############"
+  echo "  停止：Ctrl-C（bag 会正常封包）"
+  # trap '' INT 让本脚本对 Ctrl-C 免疫，好活着打完下面的汇总。
+  # 实测（2026-10-16）：忽略态**会被子进程继承**（纯 CPython 继承 SIG_IGN、rclpy.init() 也不重置），
+  # 但 rosbag2 那层 rclcpp 自己装了 SIGINT 处理器把它盖了回去 —— 两条路都真过：
+  #   手动 Ctrl-C → bag 正常封包、脚本继续、退出码 0（向进程组发 SIGINT 实测）
+  #   --sec N    → timeout 在 fork 出的子进程里把 SIGINT 重置成默认，到点照样封包
+  # 所以别动这里；哪天换了别的录制器（没有 rclcpp 这层）要重新实测。
+  trap '' INT
+  if [ -n "$sec" ]; then
+    timeout -s INT "$sec" ros2 bag record -o "$out" "${TOPICS[@]}"
+  else
+    ros2 bag record -o "$out" "${TOPICS[@]}"
+  fi
+  echo "############ 录完 ############"
+fi
+
+# ==================== 录后自检 ====================
+# 判据只从 metadata.yaml 取。不再用 `ros2 bag info | grep "Topic: $t "`：话题"在"不等于"有数据"——
+# metadata.yaml 里 message_count: 0 的话题照样会被 info 列出来、写 Count: 0，
+# 所以整段一条没录到 / 相机塌到 2Hz / 手命令只有 5 条，老那份自检全放行（10/14 实测）。
+# metadata.yaml 在且 duration 读得出 = rosbag2 正常封包（磁盘满、被 -9 杀、sqlite 写坏都过不了）。
+meta="$out/metadata.yaml"
+if [ ! -f "$meta" ]; then
+  echo "✗ 这一集不可用：bag 没封包成功（$meta 不存在 —— 磁盘满？录到一半被杀？）" >&2
+  echo "  别删 bag，留着看现场；重录：record $task --ep $ep" >&2
+  exit 3
+fi
+# 只认 2 空格缩进的顶层 duration —— 文件末尾 files: 里那份是 6 空格，别抓错
+dur=$(awk '/^  duration:$/{f=1;next} f&&/^    nanoseconds:/{print $2;exit}' "$meta")
+case "$dur" in ''|*[!0-9]*)
+  echo "✗ 这一集不可用：metadata.yaml 里读不出 duration（bag 不完整）" >&2; exit 3;;
+esac
+dur_s=$(awk -v n="$dur" 'BEGIN{printf "%.3f", n/1e9}')
+msgs=$(awk '/^  message_count: /{print $2;exit}' "$meta")
+printf '  Duration %ss   Messages %s\n' "$dur_s" "${msgs:-?}"
+
+# 只有**紧跟 name: 之后**那个 message_count 才算一条话题 —— 末尾 files: 块里还有个同样 6 空格
+# 缩进的 message_count（整包总数）。不排掉它：正常 bag 多出一行顶着最后一条话题名的假条目
+# （靠"取第一个匹配"侥幸没算错），空 bag 就成了名字叫 0 的幽灵条目。
+_rows=$(awk '/^        name: /{n=$2; have=1; next}
+             have && /^      message_count: /{print n" "$2; have=0}' "$meta")
+
+# state 取"**这份 bag 里真有的那条**"，不用本脚本推的 $state：
+# 复核一份**别处录**的 bag 时（rospc 上录的 relay bag 拿回机器人跑 --check-only），
+# 本机 auto 推的是 /joint_states、bag 里却是 /joint_states_relay —— 照推的去查会报"缺话题"，
+# 把好集判死。判据只能来自这份 bag 自己；次序同 convert 的 state_topic=auto。
+# 显式 --state-topic 时**不覆盖**：点了名就按点名的查，缺了照样红。
+if [ -z "$state_explicit" ]; then
+  _bagstate=""
+  for _c in /joint_states /joint_states_relay /joint_states_be; do
+    if printf '%s\n' "$_rows" | awk -v T="$_c" '$1==T{print;exit}' | grep -q .; then
+      _bagstate="$_c"; break
+    fi
+  done
+  if [ -n "$_bagstate" ] && [ "$_bagstate" != "$state" ]; then
+    echo "  （bag 里的 state 是 $_bagstate，本机 auto 推的是 $state —— 按 bag 里这份查）"
+    state="$_bagstate"
+  fi
+fi
+
+# 速率下限**必须跟着上面 state 分支走**：跨机录的那份走 relay 只有 ~56Hz，
+# 一律按标称 500 判会把历史 62 集全判死 —— relay 限速 500→60 是设计，不是故障。
+min_cam=27; min_hand=45; min_arm=90
+case "$state" in
+  /joint_states)       min_state=450;;   # 标称 500，本机原速
+  /joint_states_relay) min_state=50;;    # 标称 60，实测 55.6
+  *)                   min_state=0;;     # 不认识的话题就不判速率
+esac
+
+# 要查的话题：state 换成上面定下来的那条（可能来自 bag），其余三条不变
+CHECK_TOPICS=("$state" "${TOPICS[@]:1}")
+bad=0
+for t in "${CHECK_TOPICS[@]}"; do
+  c=$(printf '%s\n' "$_rows" | awk -v T="$t" '$1==T{print $2;exit}')
+  case "$t" in
+    *compressed)                need=$min_cam;;
+    /hand_controller/commands)  need=$min_hand;;
+    /wr1_controller/commands)   need=$min_arm;;
+    *)                          need=$min_state;;
+  esac
+  if [ -z "$c" ]; then
+    echo "✗ 缺话题 $t —— 类型没解析出来？环境没 source 全（SDK / teleop_client）？" >&2; bad=1; continue
+  fi
+  if [ "$c" -eq 0 ]; then
+    echo "✗ $t 订阅上了但录制期间一条消息都没有 —— 发布者没在发？话题名对但源没起来？" >&2; bad=1; continue
+  fi
+  hz=$(awk -v c="$c" -v n="$dur" 'BEGIN{printf "%.1f", (c-1)/(n/1e9)}')
+  if awk -v a="$hz" -v b="$need" 'BEGIN{exit !(a<b)}'; then
+    echo "✗ $t 只有 ${hz}Hz（下限 ${need}Hz）—— 源中途停了？" >&2; bad=1
+  fi
+  printf '  %-44s %7s 条  %6s Hz（下限 %s）\n' "$t" "$c" "$hz" "$need"
+done
+# 多出来的话题：只白占空间，不算不可用
+for t in $(printf '%s\n' "$_rows" | awk '{print $1}'); do
+  case " ${CHECK_TOPICS[*]} " in *" $t "*) ;; *) echo "⚠ bag 里多了 $t（不在契约里，白占空间）";; esac
+done
+# 录了 --sec N 就得真的录够：Duration 是首末消息之差，源停早了会明显短于 N
+# --check-only 也认 --sec：和录制时**同一个意思**（"这一集应当是 N 秒"）—— 录的时候是要求，
+# 复查时是断言。反过来让复查忽略它更糟：用户写了 --sec 30 却什么都不验（静默 no-op），
+# 而"这一集够不够长"没有别的旗标能触发，去掉就等于删掉这条检查。
+if [ -n "$sec" ] && awk -v d="$dur_s" -v s="$sec" 'BEGIN{exit !(d < 0.9*(s+0))}'; then
+  echo "✗ 只录到 ${dur_s}s，短于 --sec $sec 的九成 —— 中途停了？" >&2; bad=1
+fi
+
+if [ "$bad" != 0 ]; then
+  # 只吼不改退出码的话，调用方（人，或者以后接自动化的脚本）会把一集不可用的数据当成功
+  echo "✗ 这一集不可用（$out）：**别删 bag、也别用它**；修好上面红的再 record $task --ep $ep 重录" >&2
+  exit 3
+fi
+[ -n "$checkonly" ] && exit 0
+echo
+# 下一步提示用 convert（别用 bag2lerobot）：convert 的 state 话题是 auto——**从 bag 里认**
+# 有 /joint_states 就用它，所以不用把本脚本选的 state 话题再传一遍，路径/输出名也由它自己拼。
+# 只有 --root 不是默认值时才要跟着传，否则 convert 会去默认根目录找 bag（找不着只说"没有 coll_<task>"）。
+_dflt_root="$HOME/datasets"; [ -d "$HOME/xiaodan" ] && _dflt_root="$HOME/xiaodan"
+_next="ros2 run q5_datacollect convert $task"
+[ "$root" = "$_dflt_root" ] || _next="$_next --root $root"
+echo "下一步：$_next"
+# 重录一个坏集要**占回原号**：episode_index 是转换时按目录排序现编的（bag2lerobot:579 的 enumerate(sorted(bags))），
+# 删掉中间一集会让后面所有集的 index 前移 → keep_ranges.json 的全局行号、已训 checkpoint 的评估集**静默**错位。
+echo "  重录某一集：先把坏 bag 挪走，再 record $task --ep <原号> 占回那个号（别另编新号、别跳过）"
+echo "              集号是转换时按目录排序现编的，缺一个目录会让它后面每一集的 episode_index 前移"

@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<!-- 参考重建版 + ros2_control，用于 Gazebo 里真的驱动关节。
+
+     xacro:include 直接把包里的 URDF 拼进来（那份没有 xacro 标签，就是纯 XML 包含），
+     所以几何/关节链只有一份来源，不会出现"改了 URDF 忘了改控制版"。
+
+     控制接口沿用旧模型 q5_gazebo/q5_controllers.yaml 那套（38 个位置关节：双臂 14 +
+     手指 16 + 髋/膝/踝/腰/颈 6+2），关节名与官方链完全一致，实测逐个对得上；这里额外
+     把两个驱动轮加到速度控制器里，方便让底盘动起来。
+-->
+<robot name="q5_control" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="q5_reference_xhand.urdf"/>
+
+  <gazebo>
+    <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+      <parameters>$(find q5_description)/config/q5_controllers.yaml</parameters>
+      <ros>
+        <namespace>/</namespace>
+      </ros>
+    </plugin>
+  </gazebo>
+
+  <ros2_control name="q5" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+
+    <!-- 双臂 -->
+    <joint name="left_shoulder_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_shoulder_roll_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_arm_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_elbow_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_elbow_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_wrist_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_wrist_roll_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_shoulder_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_shoulder_roll_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_arm_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_elbow_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_elbow_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_wrist_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_wrist_roll_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+
+    <!-- 手指（不含 6 个拇指关节：旧模型实测惯量 1e-7 量级会振荡，需单独调参） -->
+    <joint name="left_hand_index_bend_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_index_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_index_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_mid_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_mid_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_ring_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_ring_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_pinky_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="left_hand_pinky_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_index_bend_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_index_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_index_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_mid_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_mid_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_ring_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_ring_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_pinky_joint1"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="right_hand_pinky_joint2"><command_interface name="position"/><state_interface name="position"/></joint>
+
+    <!-- 腿 / 腰 / 颈 -->
+    <!-- 踝关节走**力矩**接口：它是唯一能撬动底盘的关节（240 N·m，驱动轮只有 15 N·m
+         而撬开三点卡点要 ~59 N·m）。position 接口是 SetPosition 遥移，不产生反力矩，
+         所以平衡必须用 effort。 -->
+    <joint name="ankle_joint">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="knee_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="hip_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="waist_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="neck_yaw_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+    <joint name="neck_pitch_joint"><command_interface name="position"/><state_interface name="position"/></joint>
+
+    <!-- 驱动轮：速度接口，用来让底盘前后走 -->
+    <joint name="left_drv_wheel_joint"><command_interface name="velocity"/><state_interface name="velocity"/><state_interface name="position"/></joint>
+    <joint name="right_drv_wheel_joint"><command_interface name="velocity"/><state_interface name="velocity"/><state_interface name="position"/></joint>
+  </ros2_control>
+</robot>

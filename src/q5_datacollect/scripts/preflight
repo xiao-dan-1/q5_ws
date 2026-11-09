@@ -1,0 +1,163 @@
+#!/bin/bash
+# 采集前置检查（**只读**：不发布任何话题、不启动任何节点、不碰机器人）
+#
+# 只查两件事 —— 因为只有这两件是"录完查不出来 / 代价太大"：
+#   1) 两条命令话题的**发布者个数与身份**：rosbag2 不记发布者，两个源混进同一话题事后拆不开
+#      （历史故障：simple_trajectory_server + teleopX_node 同时发手命令；MPC 与关节直控互斥抢臂话题）
+#   2) **相机速率**：帧以相机为时钟，相机没起 = 整集 0 帧，录完才发现就白录一集
+# 其余（话题在不在、其它话题速率、QoS）录完都能从 bag 里算出来，不在这里花时间等。
+# 总时长 ≈ 7 秒：info 是瞬时的，只有相机测 6 秒。
+#
+# 用法：ros2 run q5_datacollect preflight
+# （脚本自己 source 环境；若直接跑本文件，必须用 bash —— dash(sh) 没有 source 内建，会静默空跑）
+#
+# 输出：四话题的发布者 + 相机实测速率 → 逐条 ✓/⚠/✗ 清单 + 结论
+# 退出码：0 全过 / 3 有拦项（同 record，拦项没过就别录）
+#
+# 注意：不能加 set -u —— nounset 下 source setup.bash 会卡死（同 start_xiaodan_mpc.sh 的踩坑）
+# 想看别的速率就单独测：timeout 6 ros2 topic hz /joint_states_relay
+
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=211
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# 工作空间 install：布局有两套 —— rospc 是 merge-install（<ws>/install/lib/q5_datacollect/），
+# 机器人在 ~/xiaodan 且是 isolated（<ws>/install/q5_datacollect/lib/q5_datacollect/）。
+# 所以**从脚本自身位置往上找 setup.bash**，再退回两种已知布局 —— 别写死 $HOME/q5_ws：
+# 9/18 实测机器人上那行报 No such file or directory。
+_ws=0
+_d=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+for _i in 1 2 3 4 5; do
+  _d=$(dirname "$_d")
+  if [ -f "$_d/setup.bash" ]; then source "$_d/setup.bash"; _ws=1; break; fi
+done
+if [ "$_ws" = 0 ]; then
+  for _w in "$HOME/q5_ws/install/setup.bash" "$HOME/xiaodan/q5_ws/install/setup.bash"; do
+    if [ -f "$_w" ]; then source "$_w"; _ws=1; break; fi
+  done
+fi
+[ "$_ws" = 1 ] || echo "⚠ 没找到工作空间的 setup.bash（q5_ws 没装？）—— 消息类型可能解析不出来" >&2
+# 机器人上 xbot_common_interfaces 在 SDK / teleop_client 的 install 里（rospc 无此目录，跳过）。
+# 少 source 它们 → 命令话题的类型解析不出来，topic hz 会报 "message type ... is invalid"。
+for _s in "$HOME/ros2_sdk-dev/install/setup.bash" "$HOME/xiaodan/ros2_sdk-dev/install/setup.bash" \
+          "$HOME/teleop_client/install/setup.bash" "$HOME/xiaodan/teleop_client/install/setup.bash"; do
+  if [ -f "$_s" ]; then source "$_s"; fi
+done
+# CycloneDDS 配置：rospc 在 ~/.ros/，机器人在 ~/xiaodan/ —— 不能写死路径
+# （写死会让另一台机器 rmw_create_node 失败、什么都看不到）
+for _c in "$HOME/.ros/cyclonedds_q5.xml" "$HOME/xiaodan/cyclonedds_q5.xml"; do
+  if [ -f "$_c" ]; then export CYCLONEDDS_URI="file://$_c"; break; fi
+done
+[ -n "$CYCLONEDDS_URI" ] || echo "⚠ 没找到 cyclonedds_q5.xml，退回 DDS 默认发现（跨机可能不稳）" >&2
+
+if ! command -v ros2 >/dev/null; then
+  echo "✗ ros2 不在 PATH —— setup.bash 没 source 上（是不是用 sh 跑的？用 bash）"
+  exit 1
+fi
+
+# 闲置名单只有本脚本判（发布者检查 2026-09-18 从 record 挪到这里，record 自己只录不拦）
+IDLE_OK="simple_trajectory_server"   # SDK 常驻注册但闲置，不算活源
+
+# 一次 --verbose 拿全：发布者个数 + **只用 PUBLISHER 端**的名字（订阅者也有 Node name 行，别混进来）
+scan() {
+  _o=$(ros2 topic info "$1" --verbose 2>&1)
+  n_pub=$(printf '%s\n' "$_o" | sed -n 's/^Publisher count: //p' | head -1)
+  who=$(printf '%s\n' "$_o" | awk '/^Node name: /{n=$3} /^Endpoint type: PUBLISHER/{printf "%s%s", (c++ ? ", " : ""), n}')
+  n_pub=${n_pub:-0}
+}
+# 活源 = 发布者名单去掉闲置名单（判据只在这一处，别在别处再写一套）
+live() {
+  lv=0; lvn=""
+  for _n in $(printf '%s' "$1" | tr ',' ' '); do
+    [ -z "$_n" ] && continue
+    case " $IDLE_OK " in *" $_n "*) ;; *) lv=$((lv + 1)); lvn="$lvn $_n";; esac
+  done
+}
+# ---------- 先把 IO 全做完（只有相机测速要 6 秒），再一次性打出干净报表 ----------
+CAM=/camera/camera/color/image_raw/compressed
+echo "Q5 采集前检查 · ROS_DOMAIN_ID=$ROS_DOMAIN_ID · $(date +%H:%M:%S)"
+echo "  采集中（相机测速 6 秒，其余瞬时）…"
+scan /wr1_controller/commands;  arm_n=$n_pub;   arm_who=$who
+scan /hand_controller/commands; hand_n=$n_pub;  hand_who=$who
+scan /joint_states;             st_n=$n_pub;    st_who=$who
+scan /joint_states_relay;       relay_n=$n_pub; relay_who=$who
+scan "$CAM";                    cam_n=$n_pub
+cam=$(timeout 6 ros2 topic hz "$CAM" 2>&1 | sed -n 's/^ *average rate: //p' | tail -1)
+cam_note=""
+if [ -z "$cam" ]; then
+  cam=$(timeout 6 ros2 topic hz "$CAM" --qos-reliability best_effort 2>&1 | sed -n 's/^ *average rate: //p' | tail -1)
+  [ -n "$cam" ] && cam_note="（只有 best_effort 订阅才收到，QoS 改过？）"
+fi
+
+# 表格和判读的标签**只用 ASCII**：中文是双宽，printf 的 %-Ns 按字符数算会歪；
+# 中文放最后一列（右侧不需要对齐），随便多宽都不影响左边
+sec()  { echo; echo "── $1"; }
+row()  { printf "   %-42s 发布 %-2s %s\n" "$1" "$2" "${3:-—}"; }
+line() { printf "   %s %-9s %s\n" "$1" "$2" "$3"; }
+
+sec "命令话题（唯一事后查不出来的东西：rosbag2 不记发布者，两源混流事后拆不开）"
+row /wr1_controller/commands "$arm_n"  "$arm_who"
+row /hand_controller/commands "$hand_n" "$hand_who"
+
+# 下面只是"哪个有发布者"：record 的 auto **不按发布者判**，是按"在哪台机器上跑"判
+# （见 record 头部：有 ~/teleop_client 就直取 /joint_states，其余跨机一律走 relay）
+sec "state 链路（哪个有发布者 —— record 的 auto 按机器判，不看这里）"
+row /joint_states       "$st_n"    "$st_who"
+row /joint_states_relay "$relay_n" "$relay_who"
+
+sec "相机（没图就没帧）"
+row "$CAM" "$cam_n" "camera${cam:+   ${cam}Hz}${cam_note}"
+
+# ---------- 判读：逐条给符号，符号说了算 ----------
+sec "判读"
+bad=0
+
+live "$arm_who"
+if [ "$lv" != 1 ]; then
+  line ✗ arm_cmd "活源 $lv：${lvn# } —— 必须恰好 1 个（MPC 与关节直控互斥抢臂话题），先停掉多余的"
+  bad=1
+elif [ "${lvn# }" = mpc_policy_node ]; then
+  line ✓ arm_cmd "活源 1：mpc_policy_node"
+else
+  line ⚠ arm_cmd "活源 1：${lvn# }（不是 mpc_policy_node，确认是你要的那路）"
+fi
+
+live "$hand_who"
+idle=""
+case ",$hand_who," in *",$IDLE_OK,"*) idle="（$IDLE_OK 闲置）";; esac
+if [ "$lv" = 1 ]; then
+  line ✓ hand_cmd "活源 1：${lvn# }$idle"
+else
+  line ✗ hand_cmd "活源 $lv：${lvn# } —— 必须恰好 1 个（两源混流污染 action 且录完拆不开）"
+  bad=1
+fi
+
+if [ "${st_n:-0}" -ge 1 ]; then
+  line ✓ state "/joint_states 有发布者（机器人本机录制会直取它；跨机录制仍走 relay）"
+elif [ "${relay_n:-0}" -ge 1 ]; then
+  line ✓ state "走 /joint_states_relay（跨机限速 500→60Hz）；/joint_states 跨机看不到是正常的"
+else
+  line ✗ state "/joint_states 和 /joint_states_relay 都没发布者 —— 没 state 就没帧"
+  bad=1
+fi
+
+cam_i=${cam%%.*}
+if [ -z "$cam" ]; then
+  line ✗ camera "收不到数据（6 秒）—— 相机没起或跨机链路塌了，录下去整集 0 帧"
+  bad=1
+elif [ "${cam_i:-0}" -ge 25 ]; then     # 标称 ~27.7Hz；实测确实会抖到 16~19，所以 ✓ 线压在 25
+  line ✓ camera "${cam}Hz${cam_note}"
+elif [ "${cam_i:-0}" -ge 10 ]; then
+  line ⚠ camera "${cam}Hz 偏低（正常 ~30）${cam_note}"
+else
+  line ✗ camera "${cam}Hz 个位数 —— 大图 RELIABLE 分片重传塌了，查链路再录"
+  bad=1
+fi
+
+echo
+if [ "$bad" = 0 ]; then
+  echo "结论：✓ 通过 → ros2 run q5_datacollect record <task>（Ctrl-C 停）"
+  exit 0
+fi
+echo "结论：✗ 有拦项（上面带 ✗ 的行），先处理再录；⚠ 只是提醒" >&2
+echo "  其它速率想看就单独测：timeout 6 ros2 topic hz <话题>" >&2
+exit 3

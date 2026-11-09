@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_ctrl</name>
+  <version>0.2.0</version>
+  <description>Q5 关节命令发布器（真机 + WSL/rospc 端，统一版本）。把 38 维姿态发成 HybridJointCommand：
+    /wr1_controller/commands（14 臂 + 6 承重关节保持值）+ /hand_controller/commands（24 手）。
+    默认 dry-run，真发加 enable_motion:=true。依赖 xbot_common_interfaces（可选，缺了用 xbot_msgs 替身只能 dry-run）。</description>
+  <maintainer email="xiaodan@rospc.local">xiaodan</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>xbot_common_interfaces</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

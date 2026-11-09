@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <!-- 有重力 + 地面摩擦的驱动世界：轮子有抓地力，底盘才能真的前进。
+
+       前提是模型带碰撞体（build_q5_reference.py 给两个驱动轮和底盘裙板加了简化碰撞）。
+       重心不高、轮距够宽，配合位置控制器把踝/膝/髋锁在 0，它就是一个轮式倒立摆：
+       轮速指令推到多少就往前跑多少。
+       注意：零重力世界（q5_control.world）里轮子只会空转、底盘不动。
+  -->
+  <world name="q5_drive">
+    <gravity>0 0 -9.8</gravity>
+
+    <physics name="q5_physics" default="0" type="dart">
+      <max_step_size>0.001</max_step_size>
+      <real_time_update_rate>1000</real_time_update_rate>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <surface>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
+        </visual>
+        <inertial>
+          <mass>1.0</mass>
+          <inertia><ixx>1</ixx><ixy>0</ixy><ixz>0</ixz><iyy>1</iyy><iyz>0</iyz><izz>1</izz></inertia>
+        </inertial>
+      </link>
+    </model>
+
+    <plugin name="gazebo_ros_init" filename="libgazebo_ros_init.so"/>
+    <plugin name="gazebo_ros_factory" filename="libgazebo_ros_factory.so"/>
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <update_rate>30.0</update_rate>
+    </plugin>
+
+    <!-- 侧向机位：方便看底盘是不是真的在往前跑 -->
+    <model name="cam_view">
+      <static>true</static>
+      <pose>0 -3.2 1.0 0 0.14 1.5708</pose>
+      <link name="link">
+        <inertial>
+          <mass>1.0</mass>
+          <inertia><ixx>1</ixx><ixy>0</ixy><ixz>0</ixz><iyy>1</iyy><iyz>0</iyz><izz>1</izz></inertia>
+        </inertial>
+        <sensor name="cam" type="camera">
+          <update_rate>5</update_rate>
+          <camera>
+            <horizontal_fov>1.2</horizontal_fov>
+            <image><width>900</width><height>720</height></image>
+            <clip><near>0.1</near><far>100</far></clip>
+          </camera>
+          <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+            <camera_name>cam_view</camera_name>
+            <image_topic_name>image_raw</image_topic_name>
+            <camera_info_topic_name>camera_info</camera_info_topic_name>
+            <frame_name>cam_view_link</frame_name>
+          </plugin>
+        </sensor>
+      </link>
+    </model>
+  </world>
+</sdf>

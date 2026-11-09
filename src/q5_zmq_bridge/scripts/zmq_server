@@ -1,0 +1,567 @@
+#!/usr/bin/python3
+"""
+Q5 人形机器人 - ZMQ Server (ROS2 ↔ ZMQ 桥接)
+
+包化说明（2026-09-15）：来源 /home/developer/teleop_client/zmq_server.py，
+原样搬入，未改动原文件。与原版的唯一差异是 shebang：原版由
+`/usr/bin/python /路径/zmq_server.py` 显式调用、绕过 shebang，包化后走
+`ros2 run` 使 shebang 生效，而 .bashrc 里的 conda 会让 `env python3` 落到
+Python 3.13（ROS Humble 是 3.10），故写死 /usr/bin/python3。
+
+msgpack_offline.py 一并安装到同目录 —— 本脚本用 `from msgpack_offline import
+msgpack`，靠的正是"脚本所在目录在 sys.path 上"这个性质，两个文件必须同目录。
+
+
+推荐部署 (直连，最简单):
+  Q5 NUC 上运行本脚本 → RoboDriver 直连 NUC IP
+
+  NUC:
+    source ROS2
+    python zmq_server.py --host 0.0.0.0
+
+包化后的启动方式 (2026-09-15，参数与原 argparse 完全一致，走 launch 的
+`arguments=[...]` 传，不用改代码):
+    ros2 launch q5_bringup vive_teleop.launch.py          # 全套，默认就跑这个
+    ros2 run q5_zmq_bridge zmq_server --host 0.0.0.0     # 单跑
+
+  WSL (RoboDriver):
+    robodriver-run --robot.type=q5_zmq --robot.zmq_server_host=<NUC_IP>
+
+  端口: 5555=观测 PUB, 5556=action SUB (无需 WSL relay，无需 nuc_bridge)
+
+备选 relay 模式 (仅当必须在 WSL 做中转时):
+  NUC: nuc_bridge.py --wsl-host <WSL_IP>
+  WSL: python zmq_server.py --relay  (额外占用 5557/5558)
+"""
+
+import argparse
+import threading
+import time
+from typing import Any, Dict
+
+import cv2
+import numpy as np
+from msgpack_offline import msgpack
+import zmq
+
+try:
+    import rclpy
+    from rclpy.node import Node as RosNode
+    from sensor_msgs.msg import CompressedImage, Image, JointState
+    from std_msgs.msg import Header
+
+    HAS_ROS2 = True
+except ImportError:
+    HAS_ROS2 = False
+    print("[WARNING] ROS2 (rclpy) 未安装，将以 mock 模式运行")
+
+
+# ============================================================
+# ROS2 Topic 配置 (Q5 机载 NUC 实际 topic)
+# ============================================================
+TOPIC_CONFIG = {
+    # ---- Follower 关节状态 (Q5 机器人当前状态) ----
+    "follower_joints": {
+        "topic": "/joint_states",
+        "msg": "JointState",
+        "side": "follower",
+    },
+    # ---- Leader 关节状态 (遥操作/外骨骼输入) ----
+    "leader_joints": {
+        "topic": "/actuator_states",
+        "msg": "JointState",
+        "side": "leader",
+    },
+    # ---- 摄像头 (RealSense) ----
+    "image_head": {
+        "topic": "/camera/camera/color/image_raw/compressed",
+        "msg": "CompressedImage",
+    },
+    "image_left_wrist": {
+        "topic": "",
+        "msg": "Image",
+    },
+    "image_right_wrist": {
+        "topic": "",
+        "msg": "Image",
+    },
+    # ---- Action 发布 topic ----
+    "action_topic": "/actuator_commands",
+}
+
+# Q5 关节名称 (ROS2 JointState.name 中的名称)
+LEFT_ARM_JOINTS = [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_arm_yaw_joint",
+    "left_elbow_pitch_joint",
+    "left_elbow_yaw_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_roll_joint",
+]
+
+RIGHT_ARM_JOINTS = [
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_arm_yaw_joint",
+    "right_elbow_pitch_joint",
+    "right_elbow_yaw_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_roll_joint",
+]
+
+LEFT_HAND_JOINTS = [
+    "left_hand_thumb_bend_joint",
+    "left_hand_thumb_rota_joint1",
+    "left_hand_thumb_rota_joint2",
+    "left_hand_index_bend_joint",
+    "left_hand_index_joint1",
+    "left_hand_index_joint2",
+    "left_hand_mid_joint1",
+    "left_hand_mid_joint2",
+    "left_hand_ring_joint1",
+    "left_hand_ring_joint2",
+    "left_hand_pinky_joint1",
+    "left_hand_pinky_joint2",
+]
+
+RIGHT_HAND_JOINTS = [
+    "right_hand_thumb_bend_joint",
+    "right_hand_thumb_rota_joint1",
+    "right_hand_thumb_rota_joint2",
+    "right_hand_index_bend_joint",
+    "right_hand_index_joint1",
+    "right_hand_index_joint2",
+    "right_hand_mid_joint1",
+    "right_hand_mid_joint2",
+    "right_hand_ring_joint1",
+    "right_hand_ring_joint2",
+    "right_hand_pinky_joint1",
+    "right_hand_pinky_joint2",
+]
+
+# JointState name → 简化名称的映射
+_JOINT_NAME_MAP: Dict[str, str] = {}
+
+for _j in LEFT_ARM_JOINTS + RIGHT_ARM_JOINTS:
+    # "left_shoulder_pitch_joint" → "left_shoulder_pitch"
+    _short = _j.replace("_joint", "")
+    _JOINT_NAME_MAP[_j] = _short
+
+for _j in LEFT_HAND_JOINTS + RIGHT_HAND_JOINTS:
+    _short = _j.replace("_joint", "")
+    _JOINT_NAME_MAP[_j] = _short
+
+
+class Q5ZmqServer:
+    """
+    WSL 侧 ZMQ 中继/桥接节点。
+
+    - PUB (pub_port): 向 RoboDriver 发布观测
+    - SUB (sub_port): 接收 RoboDriver 的 action
+    - relay 模式下额外:
+      - SUB (nuc_upstream_port): 接收 NUC 观测
+      - PUB (nuc_downstream_port): 转发 action 到 NUC
+    """
+
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        pub_port: int = 5555,
+        sub_port: int = 5556,
+        relay_mode: bool = False,
+        nuc_upstream_port: int = 5557,
+        nuc_downstream_port: int = 5558,
+    ):
+        self.host = host
+        self.pub_port = pub_port
+        self.sub_port = sub_port
+        self.relay_mode = relay_mode
+        self.nuc_upstream_port = nuc_upstream_port
+        self.nuc_downstream_port = nuc_downstream_port
+        self.running = False
+
+        self.context = zmq.Context()
+
+        self.pub_socket = self.context.socket(zmq.PUB)
+        self.pub_socket.bind(f"tcp://{host}:{pub_port}")
+
+        self.sub_socket = self.context.socket(zmq.SUB)
+        self.sub_socket.bind(f"tcp://{host}:{sub_port}")
+        self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, "action/")
+
+        self.nuc_upstream_sub = None
+        self.nuc_downstream_pub = None
+        if relay_mode:
+            self.nuc_upstream_sub = self.context.socket(zmq.SUB)
+            self.nuc_upstream_sub.bind(f"tcp://{host}:{nuc_upstream_port}")
+            self.nuc_upstream_sub.setsockopt_string(zmq.SUBSCRIBE, "")
+
+            self.nuc_downstream_pub = self.context.socket(zmq.PUB)
+            self.nuc_downstream_pub.bind(f"tcp://{host}:{nuc_downstream_port}")
+
+        self.lock = threading.Lock()
+
+        print(f"[Q5ZmqServer] RoboDriver 观测 PUB = tcp://{host}:{pub_port}")
+        print(f"[Q5ZmqServer] RoboDriver 动作 SUB = tcp://{host}:{sub_port}")
+        if relay_mode:
+            print(f"[Q5ZmqServer] NUC 观测 SUB   = tcp://{host}:{nuc_upstream_port}")
+            print(f"[Q5ZmqServer] NUC 动作 PUB     = tcp://{host}:{nuc_downstream_port}")
+
+    # ================================================================
+    # ROS2 → ZMQ: 发布观测数据
+    # ================================================================
+
+    def publish_joint(self, side: str, joint_name: str, value: float):
+        """
+        发布关节数据。
+        side: "follower" 或 "leader"
+        """
+        short_name = _JOINT_NAME_MAP.get(joint_name, joint_name)
+        topic = f"joint/{side}/{short_name}"
+        payload = msgpack.packb(
+            {"value": value},
+            use_bin_type=True,
+        )
+        try:
+            self.pub_socket.send_multipart(
+                [topic.encode("utf-8"), payload],
+                flags=zmq.NOBLOCK,
+            )
+        except zmq.Again:
+            pass  # 队列满，丢弃
+
+    def publish_image(
+        self,
+        camera_name: str,
+        frame: np.ndarray,
+        encoding: str = "rgb8",
+    ):
+        """发布图像数据"""
+        topic = f"image/{camera_name}"
+        h, w = frame.shape[:2]
+        payload = msgpack.packb(
+            {
+                "encoding": encoding,
+                "width": w,
+                "height": h,
+                "data": frame.tobytes(),
+            },
+            use_bin_type=True,
+        )
+        try:
+            self.pub_socket.send_multipart(
+                [topic.encode("utf-8"), payload],
+                flags=zmq.NOBLOCK,
+            )
+        except zmq.Again:
+            pass
+
+    # ================================================================
+    # ZMQ → ROS2: 接收 action 并返回
+    # ================================================================
+
+    def recv_action_raw(self) -> list[bytes] | None:
+        """非阻塞接收 action 原始 multipart 消息。"""
+        try:
+            return self.sub_socket.recv_multipart(flags=zmq.NOBLOCK)
+        except zmq.Again:
+            return None
+
+    def recv_action(self) -> Dict[str, Any] | None:
+        """
+        非阻塞接收 action 指令。
+        返回: {"topic": "action/left_arm", "data": np.ndarray, ...} 或 None
+        """
+        msg = self.recv_action_raw()
+        if msg is None or len(msg) < 2:
+            return None
+        payload = msgpack.unpackb(msg[1], raw=False)
+        data = np.frombuffer(payload["data"], dtype=np.float32)
+        data = data.reshape(payload.get("shape", [-1]))
+        return {
+            "topic": payload["topic"],
+            "data": data,
+            "raw": msg,
+        }
+
+
+# ============================================================
+# ROS2 节点 (仅在 rclpy 可用时使用)
+# ============================================================
+
+if HAS_ROS2:
+
+    class Q5RosBridge(RosNode):
+        """ROS2 桥接节点：订阅 Q5 状态 topic，转发到 ZMQ Server"""
+
+        def __init__(self, zmq_server: Q5ZmqServer):
+            super().__init__("q5_zmq_bridge")
+            self.zmq_server = zmq_server
+
+            # ---- 订阅 follower 关节 ----
+            cfg = TOPIC_CONFIG["follower_joints"]
+            self.create_subscription(
+                JointState,
+                cfg["topic"],
+                lambda msg: self._joint_cb(msg, "follower"),
+                10,
+            )
+            print(f"[ROS2] Subscribed follower: {cfg['topic']}")
+
+            # ---- 订阅 leader 关节 ----
+            cfg = TOPIC_CONFIG["leader_joints"]
+            self.create_subscription(
+                JointState,
+                cfg["topic"],
+                lambda msg: self._joint_cb(msg, "leader"),
+                10,
+            )
+            print(f"[ROS2] Subscribed leader: {cfg['topic']}")
+
+            # ---- 订阅摄像头 ----
+            for cam_name in ("image_head", "image_left_wrist", "image_right_wrist"):
+                cfg = TOPIC_CONFIG[cam_name]
+                topic = str(cfg.get("topic", "")).strip()
+                if not topic:
+                    print(f"[ROS2] Skipped camera: {cam_name} (no topic configured)")
+                    continue
+                msg_type = cfg.get("msg", "Image")
+                if msg_type == "CompressedImage":
+                    self.create_subscription(
+                        CompressedImage,
+                        topic,
+                        lambda msg, cn=cam_name: self._compressed_image_cb(msg, cn),
+                        10,
+                    )
+                else:
+                    self.create_subscription(
+                        Image,
+                        topic,
+                        lambda msg, cn=cam_name: self._image_cb(msg, cn),
+                        10,
+                    )
+                print(f"[ROS2] Subscribed camera: {cam_name} → {topic} ({msg_type})")
+
+            # ---- 发布 action ----
+            self.action_pub = self.create_publisher(
+                JointState,
+                TOPIC_CONFIG["action_topic"],
+                10,
+            )
+
+        def _joint_cb(self, msg: JointState, side: str):
+            """关节状态回调"""
+            for name, pos in zip(msg.name, msg.position):
+                self.zmq_server.publish_joint(side, name, float(pos))
+
+        def _image_cb(self, msg: Image, camera_name: str):
+            """原始图像回调"""
+            try:
+                data = np.frombuffer(msg.data, dtype=np.uint8)
+                h, w = msg.height, msg.width
+                encoding = msg.encoding.lower()
+
+                if encoding == "rgb8":
+                    frame = data.reshape((h, w, 3))
+                elif encoding == "bgr8":
+                    frame = data.reshape((h, w, 3))
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                elif encoding in ("jpeg", "jpg", "png"):
+                    frame = cv2.imdecode(data, cv2.IMREAD_COLOR)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                else:
+                    return
+
+                self.zmq_server.publish_image(camera_name, frame, "rgb8")
+            except Exception as e:
+                print(f"[ROS2] Image decode error ({camera_name}): {e}")
+
+        def _compressed_image_cb(self, msg: CompressedImage, camera_name: str):
+            """压缩图像回调"""
+            try:
+                data = np.frombuffer(msg.data, dtype=np.uint8)
+                frame = cv2.imdecode(data, cv2.IMREAD_COLOR)
+                if frame is None:
+                    return
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # 2026-09-05 临时注释: print(f"[DEBUG] image_head shape: {frame.shape}")  # 应该是 (480, 640, 3)
+                self.zmq_server.publish_image(camera_name, frame, "rgb8")
+            except Exception as e:
+                print(f"[ROS2] Compressed image decode error ({camera_name}): {e}")
+
+        def publish_action(self, joint_names: list[str], positions: list[float]):
+            """将 action 发布到 ROS2"""
+            msg = JointState()
+            msg.header = Header()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.name = joint_names
+            msg.position = [float(p) for p in positions]
+            msg.velocity = []
+            msg.effort = []
+            self.action_pub.publish(msg)
+
+
+# ============================================================
+# Action 处理线程
+# ============================================================
+
+def _nuc_obs_relay_loop(zmq_server: Q5ZmqServer) -> None:
+    """relay 模式: 将 NUC 观测转发给 RoboDriver。"""
+    print("[RelayLoop] 启动 NUC 观测转发线程")
+    while zmq_server.running:
+        try:
+            msg = zmq_server.nuc_upstream_sub.recv_multipart(flags=zmq.NOBLOCK)
+            if len(msg) >= 2:
+                zmq_server.pub_socket.send_multipart(msg, flags=zmq.NOBLOCK)
+        except zmq.Again:
+            time.sleep(0.001)
+        except Exception as exc:
+            if zmq_server.running:
+                print(f"[RelayLoop] 转发失败: {exc}")
+            time.sleep(0.01)
+    print("[RelayLoop] NUC 观测转发线程已停止")
+
+
+def _action_forward_loop(zmq_server: Q5ZmqServer, ros_bridge=None):
+    """
+    持续从 RoboDriver 接收 action。
+    relay 模式: 转发到 NUC；local 模式: 转发到本地 ROS2。
+    """
+    print("[ActionLoop] 启动 action 转发线程")
+    while zmq_server.running:
+        action = zmq_server.recv_action()
+        if action is not None:
+            topic = action["topic"]
+            data = action["data"]
+
+            if zmq_server.relay_mode and zmq_server.nuc_downstream_pub is not None:
+                try:
+                    zmq_server.nuc_downstream_pub.send_multipart(
+                        action["raw"],
+                        flags=zmq.NOBLOCK,
+                    )
+                except zmq.Again:
+                    pass
+
+            if ros_bridge is not None and HAS_ROS2 and not zmq_server.relay_mode:
+                joint_names = []
+                if "left_arm" in topic:
+                    joint_names = LEFT_ARM_JOINTS
+                elif "right_arm" in topic:
+                    joint_names = RIGHT_ARM_JOINTS
+                elif "left_hand" in topic:
+                    joint_names = LEFT_HAND_JOINTS
+                elif "right_hand" in topic:
+                    joint_names = RIGHT_HAND_JOINTS
+
+                if joint_names:
+                    ros_bridge.publish_action(joint_names, data.tolist())
+                else:
+                    print(f"[ActionLoop] 未知 topic: {topic}")
+            elif not zmq_server.relay_mode:
+                print(f"[ActionLoop] Mock recv: {topic}, shape={data.shape}")
+        else:
+            time.sleep(0.001)
+
+    print("[ActionLoop] action 转发线程已停止")
+
+
+# ============================================================
+# Main
+# ============================================================
+
+def main():
+    parser = argparse.ArgumentParser(description="Q5 ZMQ Server (WSL 侧中继/桥接)")
+    parser.add_argument("--host", default="0.0.0.0", help="ZMQ bind host")
+    parser.add_argument("--pub-port", type=int, default=5555, help="RoboDriver 观测 PUB 端口")
+    parser.add_argument("--sub-port", type=int, default=5556, help="RoboDriver 动作 SUB 端口")
+    parser.add_argument("--nuc-upstream-port", type=int, default=5557, help="NUC 观测 SUB 端口 (relay)")
+    parser.add_argument("--nuc-downstream-port", type=int, default=5558, help="NUC 动作 PUB 端口 (relay)")
+    parser.add_argument(
+        "--relay",
+        action="store_true",
+        help="Relay 模式: ROS2 在 Q5 NUC 上，由 nuc_bridge.py 对接",
+    )
+    parser.add_argument("--mock", action="store_true", help="Local mock 模式，不启动 ROS2")
+    # parse_known_args 而非 parse_args：launch_ros 的 Node() 会在命令行尾部无条件
+    # 追加 `--ros-args -r __node:=zmq_server`（node.py:209），parse_args 会直接以
+    # "unrecognized arguments: --ros-args" 退出。多余的 ROS 参数留给下面的
+    # rclpy.init()（它读 sys.argv）解析，这里只取本脚本自己的开关。
+    args, _ = parser.parse_known_args()
+
+    server = Q5ZmqServer(
+        host=args.host,
+        pub_port=args.pub_port,
+        sub_port=args.sub_port,
+        relay_mode=args.relay,
+        nuc_upstream_port=args.nuc_upstream_port,
+        nuc_downstream_port=args.nuc_downstream_port,
+    )
+
+    ros_bridge = None
+
+    if args.relay:
+        print("[Main] Relay 模式: 等待 NUC (nuc_bridge.py) 连接")
+    elif HAS_ROS2 and not args.mock:
+        rclpy.init()
+        ros_bridge = Q5RosBridge(server)
+        print("[Main] Local 模式: ROS2 桥接节点已创建")
+    else:
+        print("[Main] Mock 模式运行 (无 ROS2)")
+
+    server.running = True
+
+    relay_thread = None
+    if args.relay:
+        relay_thread = threading.Thread(
+            target=_nuc_obs_relay_loop,
+            args=(server,),
+            daemon=True,
+        )
+        relay_thread.start()
+
+    action_thread = threading.Thread(
+        target=_action_forward_loop,
+        args=(server, ros_bridge),
+        daemon=True,
+    )
+    action_thread.start()
+
+    try:
+        if ros_bridge is not None:
+            print("[Main] 启动 ROS2 spin...")
+            rclpy.spin(ros_bridge)
+        else:
+            mode = "Relay" if args.relay else "Mock"
+            print(f"[Main] {mode} 模式运行中 (Ctrl+C 退出)")
+            while True:
+                time.sleep(1.0)
+    except KeyboardInterrupt:
+        print("\n[Main] 收到退出信号")
+    finally:
+        server.running = False
+        action_thread.join(timeout=2.0)
+        if relay_thread is not None:
+            relay_thread.join(timeout=2.0)
+
+        server.pub_socket.close(linger=0)
+        server.sub_socket.close(linger=0)
+        if server.nuc_upstream_sub is not None:
+            server.nuc_upstream_sub.close(linger=0)
+        if server.nuc_downstream_pub is not None:
+            server.nuc_downstream_pub.close(linger=0)
+        server.context.term()
+
+        if ros_bridge is not None and rclpy.ok():
+            # rclpy.ok() 是必需的：SIGINT/SIGTERM（Ctrl-C、launch 停止、timeout）
+            # 退出时 rclpy 的信号处理已经 shutdown 过上下文，再调一次会抛
+            # RCLError: rcl_shutdown already called —— 包化后进程由 launch 托管，
+            # 每次正常停止都会走到这条路。
+            rclpy.shutdown()
+
+        print("[Main] Q5 ZMQ Server 已停止")
+
+
+if __name__ == "__main__":
+    main()

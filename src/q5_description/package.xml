@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_description</name>
+  <version>0.1.0</version>
+  <description>RobotEra Q5 Pro 参考图重建版描述包：URDF + 网格 + 显示 launch。
+    关节链、限位和机身惯量来自官方主机 XML（q5_official_host.xml）；外壳是按手册图和透明 CAD 视图做的近似，不是原厂 CAD。
+    手部网格为 Meta SPIDER XHand 参考资源，许可见 Q5work 仓库的 urdf/XHAND_THIRD_PARTY_NOTICE.md。</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <!-- 只被 display.launch.py 的 use_gui:=true 用到；缺失时 launch 会自动退回
+       无 GUI 的 joint_state_publisher。装它：sudo apt install ros-humble-joint-state-publisher-gui -->
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

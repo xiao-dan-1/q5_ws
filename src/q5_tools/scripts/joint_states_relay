@@ -1,0 +1,89 @@
+#!/usr/bin/python3
+"""机器人端中继：/joint_states -> /joint_states_relay（同 QoS 的限速副本）。
+
+中继是为了**限速**，不是为了 QoS。这一点 2026-09-17 用受控实验改正过：
+    同一份 60Hz×2KB 数据同时发两个话题、只差 QoS（机器人发 → rospc 收）：
+        /qos_probe_reliable  RELIABLE     收到 1285/1285，断档 0，丢帧 0
+        /qos_probe_be        BEST_EFFORT  收到 1285/1285，断档 0，丢帧 0
+    rospc 上 `ros2 topic info /qos_probe_reliable --verbose` 也看得到 Publisher count = 1。
+    → 跨机 RELIABLE 完全能通（本来就走单播）。早先"可靠话题跨机不通、只有 best_effort
+      能过"只来自一次观察（rospc 上 /joint_states Publisher count = 0），机制未经证明，
+      已被上述实验推翻；那次 count=0 另有原因（最可能是发布者当时不在线），待 launch
+      起来复核。故本节点发 RELIABLE：数据集里的 state 不该有静默缺口。
+    （复现探针：tools_robot/qos_probe_pub.py + qos_probe_sub.py）
+
+限速的必要性：源话题机器人本机 500Hz（≈1MB/s，见 doc/数采链路分析），跨机只要够相机
+节拍用就行，60Hz ≈ 120KB/s。
+rate 为什么默认 60 而不是 30：相机实测 30.5Hz，中继 30Hz 时状态比帧慢，
+采集会出现"state 陈旧"跳帧（实测 1/227）。60Hz 把状态最大年龄从 ~34ms 压到 ~17ms。
+
+用法：
+    ros2 run q5_tools joint_states_relay            # 默认 60Hz
+    ros2 run q5_tools joint_states_relay --rate 30
+    ros2 launch q5_bringup vive_teleop.launch.py    # 由 launch 托管，rate 走 relay_rate 参数
+
+订阅端 QoS 必须匹配 RELIABLE：ROS 2 默认就是 RELIABLE，但用 qos_profile_sensor_data
+（BEST_EFFORT）会匹配不上、一条都收不到。ros2 bag record 会自动适配发布者 QoS，无需设置。
+
+shebang 写死 /usr/bin/python3：.bashrc 里的 conda 会让 `env python3` 落到 3.13，
+而 ROS Humble 是 3.10（同 q5_zmq_bridge/zmq_server 的踩坑记录）。
+"""
+import argparse
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import JointState
+
+# 与源话题、以及与 rospc 消费端对齐：RELIABLE（见文件头，跨机 RELIABLE 实测零丢帧）
+_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST)
+
+
+class Relay(Node):
+    def __init__(self, rate):
+        super().__init__("joint_states_relay")
+        self._interval = 1.0 / max(1.0, rate)
+        self._last = 0.0
+        self.create_subscription(JointState, "/joint_states", self._cb, _QOS)
+        self._pub = self.create_publisher(JointState, "/joint_states_relay", _QOS)
+        self.get_logger().info("relay /joint_states -> /joint_states_relay @%.0fHz（RELIABLE）" % rate)
+
+    def _cb(self, msg):
+        import time
+        now = time.monotonic()
+        if now - self._last < self._interval:
+            return
+        self._last = now
+        self._pub.publish(msg)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rate", type=float, default=60.0)
+    # parse_known_args 而非 parse_args：launch_ros 的 Node() 会在命令行尾部无条件追加
+    # `--ros-args -r __node:=joint_states_relay`，parse_args 会当场退出（exit code 2，
+    # 2026-09-17 实测：launch 起来后 relay 立刻死，话题没有发布者）。
+    # 追加的那些由 rclpy.init()（读 sys.argv）解析，这里只取本脚本自己的开关。
+    # 同 q5_zmq_bridge/zmq_server；这是 Node() 化任何脚本的必改项。
+    args, _ = ap.parse_known_args()
+    rclpy.init()
+    node = Relay(args.rate)
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        # SIGINT/SIGTERM（Ctrl-C、launch 停止、timeout、脚本 pkill）时 rclpy 已先关掉 context，
+        # 随后 spin 的 wait set 抛 RCLError。rclpy.ok() 为假即属正常退出路径，不该当错误抛
+        # ——否则 nohup 日志里每次停止都留一条 traceback。真出错时 rclpy 还在跑，照常向上抛。
+        # 与 q5_hand_bridge/hand_bridge 同一套写法。
+        if rclpy.ok():
+            raise
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

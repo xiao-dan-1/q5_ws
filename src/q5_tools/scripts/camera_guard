@@ -1,0 +1,138 @@
+#!/usr/bin/python3
+"""启动 RealSense 前先自检相机；被占就跳过，不制造 WEDGED。
+
+为什么需要它
+------------
+2026-09-18 实测的故障链（这正是用户报的原始报错）：
+
+    XOS app 已占着 D455（webxr 那路）
+        │
+    再起 realsense2_camera
+        │
+    xioctl(VIDIOC_S_FMT) failed, errno=16 EBUSY
+        │
+    ★ 失败的开流尝试会让 uvcvideo 不再建 video0/video2（WEDGED）
+        │
+    相机不可用，且停掉占用者也不会归还 → 只能 USB reset / 重启
+
+所以"撞车"的代价不只是报个错，而是把相机搞坏。这个守卫把撞车变成**提前跳过**。
+
+判据（为什么不用"能不能 open"）
+------------------------------
+相机被占时，内核把软链的目标节点删掉：
+
+    /dev/video0 -> /dev/xbot/video0      悬空
+    open("/dev/video0") -> ENOENT(2)     ← 看着像"没有相机"，其实是"被占"
+
+所以判据是**软链是否解析**。另外查一次 ROS 发布者数，覆盖"已有 realsense 在跑"。
+两者任一不满足就跳过。
+
+用法（由 teleop_base 调用，一般不手动跑）
+    camera_guard
+    ros2 launch q5_bringup teleop_base.launch.py
+
+退出码：0 = 相机已起（或已跳过，属正常分支）；非 0 = realsense 自身退出码。
+
+shebang 写死 /usr/bin/python3：.bashrc 里的 conda 会让 `env python3` 落到 3.13，
+而 ROS Humble 是 3.10（同 joint_states_relay 的踩坑记录）。
+"""
+
+import os
+import subprocess
+import sys
+
+NODES = ("video0", "video2")          # D455 的彩色/深度节点
+IMAGE_TOPIC = "/camera/camera/color/image_raw"
+RS_PROC = "realsense2_camera_node"    # 已在跑的 RealSense 进程名
+
+# 与 teleop_base 里原来写死的参数保持一致，保证改动对下游透明
+RS_ARGS = [
+    "rgb_camera.color_profile:=640x480x30",
+    "enable_depth:=false",
+    "enable_infra1:=false",
+    "enable_infra2:=false",
+    "enable_gyro:=false",
+    "enable_accel:=false",
+]
+
+
+def rs_already_running():
+    """已有 RealSense 节点在跑吗。
+
+    这是最直接的判据：开两个 realsense 节点抢同一个 D455 会 EBUSY 并把相机
+    搞成 WEDGED（2026-09-18 实测）。比 ROS 发布者数可靠 —— 节点启动到话题
+    出现之间有几十秒窗口，那段时间 publisher count 查不到。
+    """
+    try:
+        out = subprocess.run(["pgrep", "-f", RS_PROC],
+                             capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    pids = [p for p in out.split() if p.isdigit()]
+    # 排除自己（本进程命令行里含该字符串的情况）
+    return any(p != str(os.getpid()) for p in pids)
+
+
+def nodes_ok(prefix="/dev"):
+    """所有节点存在且软链能解析（悬空=被占）。"""
+    for name in NODES:
+        path = os.path.join(prefix, name)
+        if not os.path.lexists(path):
+            return False, "%s 不存在" % path
+        if not os.path.exists(path):       # 跟随软链
+            return False, "%s 悬空（相机被占或被扣住）" % path
+    return True, "ok"
+
+
+def ros_publishers(topic=IMAGE_TOPIC, timeout=12):
+    """返回发布者数；话题不存在返回 0；查询失败返回 None。"""
+    try:
+        out = subprocess.run(["ros2", "topic", "info", topic],
+                             capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if "Publisher count" in line:
+            try:
+                return int(line.split(":")[1].strip())
+            except (IndexError, ValueError):
+                return None
+    return 0
+
+
+def main():
+    # 1) 已有 realsense 在跑？最直接，且不受"话题还没出现"的窗口影响
+    if rs_already_running():
+        print("[camera_guard] 跳过 RealSense：已有 %s 进程在跑" % RS_PROC, flush=True)
+        return 0
+
+    # 2) 设备节点可用吗
+    ok, why = nodes_ok()
+    if not ok:
+        print("[camera_guard] 跳过 RealSense：%s" % why, flush=True)
+        print("[camera_guard] 处置：先停掉占用者（网页【退出遥操作】/ XOS app），再跑 launch；",
+              flush=True)
+        print("[camera_guard]       若节点已悬空，跑 "
+              "`sudo python3 usb_reset_camera.py`（约 3 秒，无需重启）", flush=True)
+        return 0
+
+    # 3) ROS 层面再确认一次（覆盖别人的 realsense，节点名可能不同）
+    pubs = ros_publishers()
+    if pubs is None:
+        print("[camera_guard] 警告：查不到 %s 的发布者，按空闲处理" % IMAGE_TOPIC, flush=True)
+    elif pubs > 0:
+        print("[camera_guard] 跳过 RealSense：已有节点在发布 %s（publisher count=%d）"
+              % (IMAGE_TOPIC, pubs), flush=True)
+        return 0
+
+    print("[camera_guard] 相机空闲，启动 RealSense D455（640x480x30，关深度/红外/IMU）",
+          flush=True)
+    cmd = ["ros2", "launch", "realsense2_camera", "rs_launch.py"] + RS_ARGS
+    try:
+        return subprocess.call(cmd)
+    except KeyboardInterrupt:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

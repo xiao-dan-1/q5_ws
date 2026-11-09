@@ -1,0 +1,281 @@
+#!/usr/bin/python3
+"""XHand 桥：TCP（手套）<-> ROS。
+
+来源：/home/developer/hand_server.py（原样搬入，未改动原文件）。
+与原始版本的差异，共三类：
+  1. 参数化：写死的 bind 地址 ('192.168.8.100', 2333)、话题名、FB_FREQ_HZ、
+     DEBUG_MODE 改为 ROS 参数。默认值与原值完全相同，不传参行为不变。
+  2. 退出路径修正：原版在 SIGINT/SIGTERM 下会刷一段 RCLError traceback 并以
+     退出码 1 结束（信号已关掉 context，finally 里又 shutdown 一次）。
+  3. shebang 写死绝对路径，见下方说明。
+协议不变量（JOINT_NAMES 的 24 关节顺序 = 与手套的 TCP 线格式）逐字节未动。
+
+注意：原版日志写 "Listening on 0.0.0.0" 但实际 bind 的是具体 IP，是错的；
+这里改成打印真实 bind 地址。
+
+shebang 特意写死 /usr/bin/python3 而不是 /usr/bin/env python3：原版由
+`/usr/bin/python /path/hand_server.py` 显式指定解释器，绕过了 shebang；包化后
+走 `ros2 run`，shebang 真的生效。而 .bashrc 里有 conda 初始化，`conda activate`
+之后 PATH 里的 python3 是 miniconda 的 3.13，import rclpy 会失败（ROS Humble 是
+cpython-310）。写死路径就不受 PATH 摆布。
+"""
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from xbot_common_interfaces.msg import HybridJointCommand
+from sensor_msgs.msg import JointState
+import sys
+import threading
+import ast
+import time
+import socket
+import json
+
+# ================= 默认值（可被 ROS 参数覆盖） =================
+DEBUG_MODE = False  # 【建议】高频运行时设为 False，否则日志会卡死线程
+TCP_HOST = '192.168.8.100'  # NUC 上手套客户端连过来的地址；换网段改这里或传 tcp_host
+TCP_PORT = 2333
+BUFFER_SIZE = 8192
+JOINT_COUNT = 24
+FB_FREQ_HZ = 50   # 目标反馈频率 (Hz)
+CMD_TOPIC = '/hand_controller/commands'
+FB_TOPIC = '/joint_states'
+
+JOINT_NAMES = [
+    'left_hand_thumb_bend_joint', 'left_hand_thumb_rota_joint1', 'left_hand_thumb_rota_joint2',
+    'left_hand_index_bend_joint', 'left_hand_index_joint1', 'left_hand_index_joint2',
+    'left_hand_mid_joint1', 'left_hand_mid_joint2', 'left_hand_ring_joint1', 'left_hand_ring_joint2',
+    'left_hand_pinky_joint1', 'left_hand_pinky_joint2',
+    'right_hand_thumb_bend_joint', 'right_hand_thumb_rota_joint1', 'right_hand_thumb_rota_joint2',
+    'right_hand_index_bend_joint', 'right_hand_index_joint1', 'right_hand_index_joint2',
+    'right_hand_mid_joint1', 'right_hand_mid_joint2', 'right_hand_ring_joint1', 'right_hand_ring_joint2',
+    'right_hand_pinky_joint1', 'right_hand_pinky_joint2'
+]
+
+# 这四个只用于填充 HybridJointCommand 的必填字段。Q5 走位置控制模式，
+# velocity / feedforward / kp / kd 实际不生效 —— 别指望调它们能改变行为。
+FIXED_VELOCITY = [0.0] * JOINT_COUNT
+FIXED_FEEDFORWARD = [350.0] * JOINT_COUNT
+FIXED_KP = [100.0] * JOINT_COUNT
+FIXED_KD = [0.0] * JOINT_COUNT
+
+class HighFreqTcpHandBridge(Node):
+    def __init__(self):
+        super().__init__('hand_tcp_hf_bridge')
+
+        # === 参数（默认值保持与原脚本一致，不传参行为不变） ===
+        self.declare_parameter('tcp_host', TCP_HOST)
+        self.declare_parameter('tcp_port', TCP_PORT)
+        self.declare_parameter('fb_freq_hz', FB_FREQ_HZ)
+        self.declare_parameter('cmd_topic', CMD_TOPIC)
+        self.declare_parameter('fb_topic', FB_TOPIC)
+        self.declare_parameter('debug', DEBUG_MODE)
+
+        self.tcp_host = self.get_parameter('tcp_host').value
+        self.tcp_port = self.get_parameter('tcp_port').value
+        self.fb_freq_hz = self.get_parameter('fb_freq_hz').value
+        # debug 不在这里缓存 —— 见 _handle_client_session 里的说明。
+        # 其余参数的生效时机：tcp_host/tcp_port 在 bind 时、话题在创建时、
+        # fb_freq_hz 在每个连接会话开始时（改了下次连上生效）。
+
+        # === ROS 2 配置 ===
+        cmd_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10,
+            durability=QoSDurabilityPolicy.VOLATILE
+        )
+        fb_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=QoSDurabilityPolicy.VOLATILE
+        )
+
+        self.publisher_ = self.create_publisher(
+            HybridJointCommand, self.get_parameter('cmd_topic').value, cmd_qos)
+        self.subscription = self.create_subscription(
+            JointState, self.get_parameter('fb_topic').value, self.listener_callback, fb_qos)
+
+        # === 共享状态 ===
+        self._lock = threading.Lock()
+        self._target_pos = [0.0] * JOINT_COUNT
+        self._latest_fb_pos = [0.0] * JOINT_COUNT
+        self._index_map = {}
+        self._map_initialized = False
+
+        # === TCP 线程控制 ===
+        self._tcp_stop_event = threading.Event()
+        self._tcp_thread = threading.Thread(target=self._tcp_server_loop, daemon=True)
+        self._tcp_thread.start()
+
+        # === ROS 控制循环 (10Hz) ===
+        self.timer = self.create_timer(0.02, self.timer_callback)
+
+        self.get_logger().info(f"🚀 [SYS] High-Freq Bridge Started. Bind: {self.tcp_host}:{self.tcp_port}")
+        self.get_logger().info(f"⚙️ [CFG] Target FB Frequency: {self.fb_freq_hz} Hz")
+
+    def listener_callback(self, msg):
+        """ROS 反馈回调"""
+        if not self._map_initialized:
+            temp_map = {}
+            for i, name in enumerate(msg.name):
+                if name in JOINT_NAMES:
+                    temp_map[JOINT_NAMES.index(name)] = i
+            if len(temp_map) == JOINT_COUNT:
+                self._index_map = temp_map
+                self._map_initialized = True
+                self.get_logger().info("✅ [ROS] Feedback Map Initialized")
+            return
+
+        with self._lock:
+            for log_idx, phys_idx in self._index_map.items():
+                if phys_idx < len(msg.position):
+                    self._latest_fb_pos[log_idx] = max(0.0, msg.position[phys_idx])
+
+    def _tcp_server_loop(self):
+        """TCP 服务器主循环"""
+        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        try:
+            server_sock.bind((self.tcp_host, self.tcp_port))
+            server_sock.listen(1)
+            server_sock.settimeout(1.0)
+            # 打印真实 bind 地址（原版这里写死 "0.0.0.0"，与实际的 bind 不符）
+            self.get_logger().info(f"👂 [TCP] Listening on {self.tcp_host}:{self.tcp_port}...")
+        except Exception as e:
+            self.get_logger().error(f"❌ [TCP] Failed to bind: {e}")
+            return
+
+        while not self._tcp_stop_event.is_set():
+            try:
+                conn, addr = server_sock.accept()
+                self.get_logger().info(f"🔗 [TCP] Client Connected: {addr}")
+                self._handle_client_session(conn, addr)
+            except socket.timeout:
+                continue
+            except Exception as e:
+                if not self._tcp_stop_event.is_set():
+                    self.get_logger().error(f"❌ [TCP] Error: {e}")
+                time.sleep(1)
+
+        server_sock.close()
+
+    def _handle_client_session(self, conn, addr):
+        """处理单个客户端会话：高频反馈"""
+        conn.settimeout(0.1) # 【优化】缩短接收超时，提高循环响应速度
+        buffer = ""
+
+        # 高频发送控制
+        interval = 1.0 / self.fb_freq_hz
+        last_send_time = time.time()
+
+        # 预计算反馈字符串模板（可选优化，但这里位置会变，所以每次都要格式化）
+
+        try:
+            while not self._tcp_stop_event.is_set():
+                current_time = time.time()
+
+                # --- 1. 接收数据 (非阻塞尝试) ---
+                try:
+                    data = conn.recv(BUFFER_SIZE)
+
+                    raw_str = data.decode('utf-8', errors='ignore')
+                    buffer += raw_str
+
+                    # 解析指令
+                    while '[' in buffer and ']' in buffer:
+                        start_idx = buffer.find('[')
+                        end_idx = buffer.find(']', start_idx)
+                        if end_idx != -1:
+                            json_str = buffer[start_idx:end_idx+1]
+                            buffer = buffer[end_idx+1:]
+                            try:
+                                cmd_vals = json.loads(json_str)
+                                if isinstance(cmd_vals, list) and len(cmd_vals) == JOINT_COUNT:
+                                    safe_vals = [max(0.0, min(3.14, float(v))) for v in cmd_vals]
+                                    with self._lock:
+                                        self._target_pos = safe_vals
+                                    # 仅在 DEBUG 模式下打印，且降低频率。
+                                    # 这里现读参数而不是用 __init__ 的快照：
+                                    # 快照会导致 `ros2 param set ... debug true`
+                                    # 返回成功却毫无效果 —— 声明了能改却改不动，
+                                    # 比不声明更误导。代价是每收到一个指令包做一次
+                                    # 参数查表，在 50~100Hz 下可忽略。
+                                    if self.get_parameter('debug').value \
+                                            and int(time.time()) % 5 == 0:
+                                        self.get_logger().info(f"🎯 [CMD] Received")
+                            except:
+                                pass
+                except socket.timeout:
+                    pass
+                except Exception as e:
+                    break
+
+                # --- 2. 发送数据 (严格频率控制) ---
+                if current_time - last_send_time >= interval:
+                    with self._lock:
+                        fb_snapshot = self._latest_fb_pos[:]
+
+                    # 快速序列化
+                    fb_json = json.dumps([round(v, 4) for v in fb_snapshot]) + "\n"
+
+                    try:
+                        conn.sendall(fb_json.encode('utf-8'))
+                        last_send_time = current_time
+                    except BrokenPipeError:
+                        break
+                    except Exception as e:
+                        break
+
+                # 微小休眠，让出 CPU，避免空转占用 100% 单核
+                time.sleep(0.001)
+
+        except Exception as e:
+            self.get_logger().warn(f"💥 [SESSION] Error: {e}")
+        finally:
+            conn.close()
+            self.get_logger().info(f"🧹 [TCP] Disconnected: {addr}")
+
+    def timer_callback(self):
+        """ROS 定时发布指令（create_timer(0.02) = 50Hz，原注释误写 10Hz）"""
+        with self._lock:
+            cmd_pos = self._target_pos[:]
+
+        msg = HybridJointCommand()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.joint_name = JOINT_NAMES
+        msg.position = cmd_pos
+        msg.velocity = FIXED_VELOCITY
+        msg.feedforward = FIXED_FEEDFORWARD
+        msg.kp = FIXED_KP
+        msg.kd = FIXED_KD
+        self.publisher_.publish(msg)
+
+    def destroy_node(self):
+        self._tcp_stop_event.set()
+        if self._tcp_thread.is_alive():
+            self._tcp_thread.join(timeout=2.0)
+        super().destroy_node()
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = HighFreqTcpHandBridge()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    except Exception:
+        # 收到 SIGINT/SIGTERM 时 rclpy 先关掉 context，随后 spin 的 wait set 报
+        # RCLError。此时 rclpy.ok() 已为假 —— 属正常退出路径，不该当错误抛。
+        # 真出错时 rclpy 仍在运行，照常向上抛。
+        if rclpy.ok():
+            raise
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

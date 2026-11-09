@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_zmq_bridge</name>
+  <version>0.1.0</version>
+  <description>Q5 观测/动作 ZMQ 桥：ROS2 话题 ↔ RoboDriver（5555 观测 PUB / 5556 动作 SUB）。ROS2 为可选项，无 rclpy 时以 mock 模式运行。</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <!-- ROS2 是可选依赖：脚本 try/except 导入，没有就走 mock 模式 -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <!-- 以下 Python 依赖不走 rosdep，由 pip 提供，未装则启动即报 ImportError：
+       pyzmq, opencv-python (cv2), numpy。 -->
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

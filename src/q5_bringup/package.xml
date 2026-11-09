@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>q5_bringup</name>
+  <version>0.1.0</version>
+  <description>Q5 启动编排：把 start_xiaodan_mpc.sh 的 7 步流程交给 ros2 launch 托管</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>q5_tools</exec_depend>
+  <exec_depend>q5_hand_bridge</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>vive_dual_arm_teleop</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

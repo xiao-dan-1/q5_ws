@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""把 ROS 相机话题转成浏览器可看的 MJPEG 流。
+
+用法：
+    ros2 run q5_tools mjpeg_server                          # 端口 8080，10fps，质量 60
+    ros2 run q5_tools mjpeg_server -p 8080 --fps 5 --quality 40   # 更省带宽
+    ros2 run q5_tools mjpeg_server -t /camera/camera/color/image_raw -p 8111 --fps 30 --quality 60
+
+浏览器打开启动日志打印的实际 IP 和端口。
+卡的话降 --fps / --quality（数字越小越省带宽）。
+"""
+import argparse
+import json
+import os
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import cv2
+import rclpy
+from cv_bridge import CvBridge
+from rclpy.node import Node
+from rclpy.utilities import remove_ros_args
+from sensor_msgs.msg import Image
+
+
+class FrameStore(Node):
+    def __init__(self, topic: str, quality: int):
+        super().__init__("mjpeg_server")
+        self._bridge = CvBridge()
+        self._quality = quality
+        self._lock = threading.Lock()
+        self._jpg = None
+        self.create_subscription(Image, topic, self._cb, 10)
+
+    def _cb(self, msg: Image) -> None:
+        cv_img = self._bridge.imgmsg_to_cv2(msg, "bgr8")
+        ok, buf = cv2.imencode(".jpg", cv_img, [int(cv2.IMWRITE_JPEG_QUALITY), self._quality])
+        if ok:
+            with self._lock:
+                self._jpg = buf.tobytes()
+
+    def latest(self) -> bytes:
+        with self._lock:
+            return self._jpg
+
+
+store = None
+fps = 10.0
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        interval = 1.0 / fps
+        try:
+            while True:
+                jpg = store.latest()
+                if jpg is not None:
+                    self.wfile.write(b"--frame\r\n")
+                    self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
+                    self.wfile.write(jpg)
+                    self.wfile.write(b"\r\n")
+                time.sleep(interval)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+def get_local_ip() -> str:
+    # Prefer the interface used to reach the SSH client; otherwise use the default route.
+    peer = os.environ.get("SSH_CONNECTION", "").split()
+    target = peer[0] if peer else "1.1.1.1"
+    try:
+        result = subprocess.check_output(
+            ["ip", "-j", "-4", "route", "get", target],
+            text=True, stderr=subprocess.DEVNULL, timeout=2,
+        )
+        for route in json.loads(result):
+            if route.get("prefsrc"):
+                return route["prefsrc"]
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    try:
+        addresses = subprocess.check_output(
+            ["hostname", "-I"], text=True, timeout=2,
+        ).split()
+        return next(ip for ip in addresses if ":" not in ip and not ip.startswith("127."))
+    except (OSError, subprocess.SubprocessError, StopIteration):
+        return "127.0.0.1"
+
+
+def main() -> None:
+    global store, fps
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-t", "--topic", default="/q5/head_camera/color/image_raw")
+    ap.add_argument("-p", "--port", type=int, default=8080)
+    ap.add_argument("--fps", type=float, default=10.0, help="推流帧率（越低越省带宽）")
+    ap.add_argument("--quality", type=int, default=60, help="JPEG 质量 1-100（越低越省带宽）")
+    args = ap.parse_args(remove_ros_args()[1:])
+
+    fps = max(1.0, args.fps)
+    rclpy.init()
+    store = FrameStore(args.topic, args.quality)
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"MJPEG: http://{get_local_ip()}:{args.port}/  fps={fps:.0f} quality={args.quality} topic={args.topic}", flush=True)
+    try:
+        rclpy.spin(store)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+        server.server_close()
+        store.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

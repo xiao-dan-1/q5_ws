@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>xbot_sdk_api</name>
+  <version>0.1.0</version>
+  <description>Vendor robot control SDK (robot_controller). Vendored copy of /home/developer/xbot_sdk_api on the Q5, upstream gitlab.robotera.com:software/xbot_sdk_api.git at f5505d9 plus the local edits that ship on the robot. Packaged so colcon installs it and no sys.path hack is needed.</description>
+  <maintainer email="xiaodan@example.com">xiaodan</maintainer>
+  <license>Proprietary</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>xbot_common_interfaces</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

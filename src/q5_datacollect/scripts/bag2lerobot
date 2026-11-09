@@ -1,0 +1,903 @@
+#!/usr/bin/python3
+"""rosbag → LeRobot v2.1：采集零代码，整形离线可重跑。
+
+入口：ros2 run q5_datacollect bag2lerobot ...（本文件在 q5_datacollect 包里，装到 lib/q5_datacollect/）
+shebang 写死 /usr/bin/python3：机器人 .bashrc 里的 conda 会让 env python3 落到 3.13，
+而 ROS Humble 是 3.10（同 joint_states_relay / zmq_server 的踩坑记录）。
+
+常规采集走 rospc（WSL 的 Ubuntu-xd，用户 xiaodan）：ROS + pyarrow + ffmpeg 都齐，
+录 + 转 + 打包在**一台机器**上完成。机器人上跑也可以 —— 2026-10-14 实测它有
+pyarrow 17.0.0 + cv2 4.5.4，8 集 2320 帧 5.0 s（464.7 帧/s）转得动。
+（本章早先写着"机器人没 pyarrow，要到 PC 补 parquet"—— 那条已过期，别再照着它绕路。）
+机器人上跑的实际好处：state 取 500Hz 原速、少一跳网络。
+
+【rospc】采集 → 转换（一步出完整数据集，含 parquet）
+    source /opt/ros/humble/setup.bash
+    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_DOMAIN_ID=211
+    source ~/q5_ws/install/setup.bash
+    export CYCLONEDDS_URI=file://$HOME/.ros/cyclonedds_q5.xml     # 钉 192.168.8.234 网卡
+
+    # 1) 录一集：record 自动取下一个集号，落 ~/datasets/coll_<task>/ep<NNN>/，Ctrl-C 停
+    #    （它内置开录前检查：两条命令话题必须各恰好 1 个发布者）
+    #    state 话题默认 auto —— 本机看得到 /joint_states 的发布者就用它（机器人本机，原速 500Hz），
+    #    看不到才用 /joint_states_relay：机器人上 q5_tools/joint_states_relay 把 500Hz 的
+    #    /joint_states 限速到 60Hz（RELIABLE，与源同 QoS）供 **rospc 跨机** 录制。机器人本机不走 relay。
+    ros2 run q5_datacollect record <task>
+    #    想看全套体检（含速率/QoS）：ros2 run q5_datacollect preflight
+    #    再录一集就直接再跑一次 record（自增 ep002、ep003…）
+    # 2) 转换（约定：**数据集目录名 = 任务名**，与 --task 同名）
+    #    日常就一条：ros2 run q5_datacollect convert <task>   （路径/任务名/state 全自动）
+    #    底下这个入口是"全控制"版，需要 --fps / --pack / 换目录 时用。
+    #    --state-topic 默认 auto = **从 bag 里认**，机器人本机录的 / joint_states 与 rospc 录的
+    #    /joint_states_relay 都不用写（老 bag 的 /joint_states_be 也能认出来）。
+    ros2 run q5_datacollect bag2lerobot ~/datasets/coll_<task> --task <task> -o ~/datasets/coll_<task>/<task>
+
+【机器人上】state 取原速 /joint_states（本机直取，不走 relay）
+    # 机器人上 xbot_common_interfaces 在 SDK / teleop_client 的 install 里，必须先 source
+    source ~/ros2_sdk-dev/install/setup.bash
+    source ~/teleop_client/install/setup.bash
+    ros2 run q5_datacollect record <task> --root ~/xiaodan          # state 自动就是 /joint_states
+    ros2 run q5_datacollect bag2lerobot ~/xiaodan/coll_<task> --task <task> \
+            -o ~/xiaodan/coll_<task>/<task>                         # state 从 bag 里自动认
+
+输出契约（**正常产物就是 data/ + meta/ + videos/**）：
+    * data/chunk-000/episode_XXXXXX.parquet —— action/state 在这里，需要 pyarrow 才能打
+    * npz/ **只在显式加 --npz 时才产出**（它只是打 parquet、算 episodes_stats 的中转）
+    * 没装 pyarrow 又想在这台机器上转：加 --npz 先出 npz，再到有 pyarrow 的机器上
+      `ros2 run q5_datacollect bag2lerobot --pack <数据集目录>` 补 parquet。
+      **不加 --npz 又没 pyarrow 时直接报错退出**，不会给你留一个缺 data/ 的半成品。
+      装 pyarrow（机器人和 rospc 都能连 pypi）：
+        python3 -m pip install --user pyarrow        # 或：python3 -m pip install --target ~/xiaodan/pylibs pyarrow
+
+为什么这么分：采集期写死的处理不可逆 —— 现有链路把 action、时间戳、图像编码全烧在
+采集期，出问题只能重采（要人、要场景）。bag 只存原始消息，整形随便重跑：同一份 bag
+换个 --action 就能对比两种 action 语义。
+
+对齐：相机是时钟，**按 header.stamp 配对**（9/17 从"按 bag 到达顺序"改过来）：
+每帧取"stamp ≤ 图像 stamp 的最新一条" state/action（因果配对，年龄恒 ≥ 0，上界 = 该路采样周期），
+超过 --max-age（默认 50ms）判为陈旧、丢这一帧。为什么不能用到达顺序：图像跨机传得慢
+（实测最多比 state 晚 ~150ms），按到达顺序会配到"比图像新"的数据（用未来数据当观测/动作）；
+ROS 官方同步策略（message_filters::ApproximateTime）也是按 header.stamp 配对 + slop 容差。
+行的 timestamp 记的是图像自身的 header.stamp（实测相机 header 比到达早 28ms，用它才
+对得上曝光时刻）。按关节名映射成 38 维，缺一个就跳过这一帧、不补零。**出帧顺序也按 stamp**
+（9/19 改：bag 的到达顺序会乱 —— 实测一集里 352/844 张图晚到 2.16s，照到达顺序写视频会来回跳）。
+图像原样落 JPEG。训练时间轴按标称 FPS 生成，但只接收连续片段：保留帧间隔
+超过 1.5 个标称周期、重复时间戳或非有限关节值会拒绝整集，不会压掉空窗继续导出。
+真实相机相对时间戳与 QC 持久保存在 meta/timing/，默认删除 npz 后仍可溯源。
+
+【速度】按集并行，默认 min(8, 核数) 个进程（--jobs 1 回老的串行路径）：一集里约 90% 的时间
+是 ffmpeg 编码 + 图像统计，两者只吃自己那一集，集与集之间零依赖。10/12 实测 62 集
+126 s → 约 36 s（12 集 26.2 → 6.9 s，3.8×）。并行只改"谁在什么时候算"，产物与串行逐字节相同
+（验收方式：同一批 bag 分别 --jobs 1 / --jobs 8 跑，比 mp4 与 parquet 的 md5）。
+
+部署：本文件与 q5_joint_limits.py 必须同目录（import 靠"脚本所在目录在 sys.path 上"）。
+
+注：相机发的是 best_effort（SENSOR_DATA），本机实测 rosbag2 默认 QoS 也能录到，
+所以采集命令不需要 QoS override 文件。
+"""
+from __future__ import annotations
+
+import argparse
+import bisect
+import json
+import multiprocessing as mp
+import os
+import re
+import shutil
+import subprocess
+import sys
+from fractions import Fraction
+from pathlib import Path
+
+import numpy as np
+
+try:
+    from q5_joint_limits import ARM_JOINT_NAMES, HAND_JOINT_NAMES, MODEL_JOINT_NAMES
+except ImportError:
+    sys.exit("导不到 q5_joint_limits —— 本文件要和 q5_joint_limits.py 放在同一目录"
+             "（q5_ws 包化后由 setup.py 把两者一起装进 lib/q5_datacollect；"
+             "老的 \"scp tools_robot/ 下两个文件\" 那套已废弃，tools_robot/ 里早没这两个源文件了）")
+
+N = len(MODEL_JOINT_NAMES)
+assert N == 38, "契约损坏：MODEL_JOINT_NAMES 应为 38 维，实际 %d" % N
+
+STATE = "/joint_states"              # 机器人本机录制的 state 话题（原速 500Hz）
+STATE_RELAY = "/joint_states_relay"  # rospc 跨机录制的 state 话题（relay 限速 60Hz）
+STATE_BE = "/joint_states_be"        # 2026-09-17 之前 relay 用的旧名
+AUTO = "auto"                        # --state-topic 默认值：从 bag 里认（见 convert_episode）
+IMG = "/camera/camera/color/image_raw/compressed"
+ARM_CMD = "/wr1_controller/commands"
+HAND_CMD = "/hand_controller/commands"
+TOPICS = (STATE, IMG, ARM_CMD, HAND_CMD)
+LABEL = {STATE: "joint_states", STATE_RELAY: "joint_states_relay", IMG: "cam_image",
+         ARM_CMD: "arm_cmd", HAND_CMD: "hand_cmd"}
+IMG_KEY = "observation.images.image_head"
+DATA_DIR = Path("data") / "chunk-000"
+# 中转用的 npz **不能**放 data/ 下：HF datasets 的 load_dataset(data_dir=...) 会把该目录
+# 下所有文件都当 parquet 读（实测报 "Parquet magic bytes not found in footer"）。
+NPZ_DIR = Path("npz") / "chunk-000"
+
+# 认"这一集"的判据：名字必须是 epNNN **且**里面有 metadata.yaml。只认 metadata.yaml 不够 ——
+# 一个回滚备份/改过名的 bag 目录（ep002_old/，里面照样有 metadata.yaml）会被当成一集，
+# 让它后面每一集的 episode_index 静默后移（实测：3 集变 4 集、ep003 从 index 2 挪到 3，rc=0 无告警），
+# 而集号 = 排序序号这条约定一破，keep_ranges.json 的全局行号和已训 checkpoint 的评估集就都错位了。
+# 被排除的目录要打出来（见 main），不能静默丢 —— 静默丢一集和静默多一集一样坏。
+_EP_NAME = re.compile(r"ep\d+")
+
+# ponytail: 实测命令 100Hz/50Hz、相机 header 比到达早 28ms，50ms 够宽又能挡住真断流
+MAX_AGE = 0.05
+MAX_FRAME_INTERVAL_PERIODS = 1.5
+# 单集丢帧率超过这个数就打 ⚠：丢帧不是"少几行"，是那段真实时间被从数据集时间轴上抹掉了
+# （parquet 的 timestamp 是 frame_index/fps 合成的等间隔）—— 实测 peach 62 集里 2 集 4.3~4.8%
+MAX_LOST_PCT = 2.0
+
+
+def stamp_of(m):
+    s = m.header.stamp
+    return s.sec + s.nanosec * 1e-9
+
+
+def vec(pair, names, context="joint vector"):
+    """(stamp, msg) → 按 names 顺序取关节值；缺任何一个返回 None（拒绝，不补零）。"""
+    if pair is None:
+        return None
+    m = pair[1]
+    keys = getattr(m, "joint_name", None) or getattr(m, "name", None)
+    if not keys:
+        return None
+    if len(keys) != len(m.position) or len(set(keys)) != len(keys):
+        sys.exit("[FAIL] %s 关节名称重复或 name/position 长度不一致" % context)
+    d = dict(zip(keys, m.position))
+    if any(n not in d for n in names):
+        return None
+    with np.errstate(over="ignore", invalid="ignore"):
+        values = np.array([d[n] for n in names], dtype=np.float32)
+    invalid = np.flatnonzero(~np.isfinite(values))
+    if invalid.size:
+        sys.exit("[FAIL] %s 存在非有限关节值（NaN/Inf/float32 溢出）：%s"
+                 % (context, ", ".join(names[i] for i in invalid)))
+    return values
+
+
+def validate_episode_data(state, action, stamps, fps, context):
+    """Reject invalid labels and discontinuous retained frames before export or --pack."""
+    if not np.isfinite(fps) or fps <= 0:
+        sys.exit("[FAIL] %s FPS 必须是有限正数" % context)
+    if (state.ndim != 2 or state.shape[1:] != (N,) or action.shape != state.shape
+            or len(state) == 0 or stamps.shape != (len(state),)):
+        sys.exit("[FAIL] %s state/action/stamp 的形状不符合 (n,38)/(n,)" % context)
+    for name, values in (("state", state), ("action", action), ("stamp", stamps)):
+        if not np.isfinite(values).all():
+            sys.exit("[FAIL] %s %s 含非有限值（NaN/Inf）" % (context, name))
+    intervals = np.diff(stamps)
+    limit = MAX_FRAME_INTERVAL_PERIODS / fps
+    invalid = np.flatnonzero((intervals <= 0) | (intervals > limit + 1e-6))
+    if invalid.size:
+        i = int(invalid[0])
+        sys.exit("[FAIL] %s 时间断点：保留帧 %d→%d 间隔 %.3f ms（要求 >0 且 ≤%.3f ms）。"
+                 "拒绝整集，不能把空窗压成一个控制步；请检查原始 bag 或按连续片段重新采集。"
+                 % (context, i, i + 1, intervals[i] * 1000, limit * 1000))
+
+
+# 38 维的分组（action==state 逐组比对用）：左臂 0-6 / 右臂 7-13 / 左手 14-25 / 右手 26-37
+GROUPS = (("左臂", slice(0, 7)), ("右臂", slice(7, 14)),
+          ("左手", slice(14, 26)), ("右手", slice(26, 38)))
+
+
+def back_steps(seq):
+    """到达顺序里的时间戳倒退 → (几个点, 最大倒退秒数)。seq = [(stamp, 是真 header.stamp)]，按到达顺序。
+
+    bag 的到达顺序本身会乱（跨机排队/重传）。倒退不影响出帧（已按 stamp 排序），
+    但成片倒退说明时戳来源有问题 —— 实测 bittermelon ep001 有 352/844 张图倒退 2.16s。
+    """
+    n, back = 0, 0.0
+    for i in range(1, len(seq)):
+        d = seq[i - 1][0] - seq[i][0]
+        if d > 0:
+            n += 1
+            back = max(back, d)
+    return n, back
+
+
+def gaps_of(seq):
+    """该路自己的 header.stamp 间隔（秒）→ (P50, P95, P99, 最大, 条数)；不可信时 None。
+
+    **一路一种时钟**：每路只用自己的 header.stamp 算 —— state 500Hz / 相机 30Hz / 臂 100Hz /
+    手 50Hz，混着算出来的"间隔"没有物理意义。有缺 stamp、拿 bag 接收时间兜底的帧就返回 None：
+    接收时钟与 stamp 时钟实测差 2~6 s，混进来会造出一个假的"空窗"；跨机传输延迟也不是控制周期。
+    """
+    if not seq or any(not ok for _, ok in seq):
+        return None
+    s = sorted(t for t, _ in seq)
+    if len(s) < 3:
+        return None
+    d = np.diff(np.asarray(s, dtype=np.float64))
+    return (float(np.percentile(d, 50)), float(np.percentile(d, 95)),
+            float(np.percentile(d, 99)), float(d.max()), len(s))
+
+
+def have_pyarrow() -> bool:
+    """有没有打 parquet 的能力 —— 正常输出 data/ meta/ videos/ 的硬前提"""
+    try:
+        import pyarrow                                     # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def short(p) -> str:
+    """把家目录缩成 ~（日志里少一截重复的绝对路径）。"""
+    s = str(p)
+    home = os.path.expanduser("~")
+    return "~" + s[len(home):] if s.startswith(home + "/") else s
+
+
+def convert_episode(bag, out, ep, action_src, fps, state_topic=AUTO,
+                    max_age=MAX_AGE):
+    """一个 bag → 一个 episode：JPG + MP4（+ 中转 npz，默认用完即删）。整集读进内存再按 stamp 出帧。
+
+    state_topic：默认 "auto" —— **从 bag 里认**（/joint_states 优先，其次 /joint_states_relay、
+    /joint_states_be），所以机器人本机录的 bag 和 rospc 跨机录的 bag 都不用显式指定。
+    两者的差别只在采样率：机器人本机直取 /joint_states 是原速 500Hz；rospc 跨机走机器人上的
+    q5_tools/joint_states_relay（RELIABLE，与源话题同 QoS），存在的意义是**限速**到相机节拍够用的 60Hz。
+    """
+    import rosbag2_py
+    from rclpy.serialization import deserialize_message
+    from rosidl_runtime_py.utilities import get_message
+
+    topics = (state_topic, IMG, ARM_CMD, HAND_CMD)
+    reader = rosbag2_py.SequentialReader()
+    reader.open(
+        rosbag2_py.StorageOptions(uri=str(bag), storage_id="sqlite3"),
+        rosbag2_py.ConverterOptions("", ""),
+    )
+    # state 话题默认 auto：**从 bag 里认**（bag 里录了哪个就是哪个）——不依赖在哪儿转：
+    #   机器人本机录的 bag 有 /joint_states（原速 500Hz，本机不走 relay）
+    #   rospc 跨机录的 bag 有 /joint_states_relay（relay 限速 60Hz）
+    #   2026-09-17 之前的老 bag 是 /joint_states_be
+    bag_topics = {t.name for t in reader.get_all_topics_and_types()}
+    if state_topic == AUTO:
+        state_topic = next((t for t in (STATE, STATE_RELAY, STATE_BE) if t in bag_topics),
+                           STATE_RELAY)
+        topics = (state_topic, IMG, ARM_CMD, HAND_CMD)
+    # 只解析真正消费的 4 个话题：bag 里其它类型导不出来也不影响
+    try:
+        kind = {t.name: get_message(t.type)
+                for t in reader.get_all_topics_and_types() if t.name in topics}
+    except ImportError as e:
+        sys.exit("消息类型解析失败：%s\n"
+                 "  xbot_common_interfaces 不在当前环境里。机器人上它在 SDK / teleop_client 的 install：\n"
+                 "    source ~/ros2_sdk-dev/install/setup.bash\n"
+                 "    source ~/teleop_client/install/setup.bash\n"
+                 "  rospc 上它在 ~/q5_ws/install（source 工作空间即可）。" % e)
+
+    img_dir = out / "images" / IMG_KEY / ("episode_%06d" % ep)
+    S, A, T, J = [], [], [], []
+    t0 = None
+    # 配对规则：按 header.stamp，不按 bag 到达顺序（9/17 改）。
+    #   每帧取"stamp ≤ 图像 stamp 的最新一条"（因果配对）→ 年龄恒 ≥ 0，上界 = 该路采样周期。
+    #   为什么必须这样：图像跨机传得慢（实测最多比 state 晚 ~150ms），按到达顺序配对会配到
+    #   "比图像新"的 state/命令（实测年龄 -151…-10 ms，等于用未来数据）。这也是 ROS 官方
+    #   同步策略的做法（message_filters::ApproximateTime 按 header.stamp 配对 + slop 容差；
+    #   文档明确说按到达时间同步"不可预测，应尽量避免"）。
+    # **写帧顺序也按 stamp**（9/19）：bag 的到达顺序本身会乱 —— 实测 bittermelon ep001 有
+    #   352/844 张图的 stamp 比前一张早 2.16s（正好 60 帧，两个时间源的特征），照到达顺序写，
+    #   视频就"放着放着又回到之前的画面"、行时间戳非单调。所以整集先读进内存，排序后再出帧。
+    # ponytail: 整集进内存（几百帧 × 几十 KB ≈ 几十 MB）换顺序正确；要流式得先能按 stamp 索引 bag
+    imgs = []                                                    # (stamp, jpeg bytes)
+    msgs = {t: [] for t in (state_topic, ARM_CMD, HAND_CMD)}     # 各话题 (stamp, vec)
+    NAMES_OF = {state_topic: MODEL_JOINT_NAMES, ARM_CMD: ARM_JOINT_NAMES,
+                HAND_CMD: HAND_JOINT_NAMES}
+
+    qc = {"state_topic": state_topic,
+          "no_state": 0, "no_action": 0, "stale_state": 0, "stale_action": 0,
+          "age_s_max": None, "age_s_min": None,
+          "age_a_min": None, "age_a_max": None, "age_a_future": 0,
+          "nostamp": {t: 0 for t in topics},
+          "seen": {t: 0 for t in topics},
+          "eq": {g: 0 for g, _ in GROUPS}}     # action 与 state 逐组**逐位全等**的帧数
+    # 每话题按**到达顺序**记 (stamp, 这个 stamp 是不是真的 header.stamp)：间隔分布与乱序都从它算。
+    # 不能用 msgs —— 那里已被"缺关节的帧"筛过一遍，算出的"间隔"会把丢帧混进正常周期。
+    # 名字避开循环里的 raw（那是序列化字节）。
+    arrival = {t: [] for t in topics}
+
+    while reader.has_next():
+        topic, raw, recv_ns = reader.read_next()
+        if topic not in kind:
+            continue
+        m = deserialize_message(raw, kind[topic])
+        ts = stamp_of(m)
+        had_stamp = ts > 0                    # 这个 stamp 是真的 header.stamp，还是下面拿接收时间顶的
+        if ts <= 0:
+            # header.stamp 没打，兜底用 bag 的**接收**时间（否则 0 会被当成 1970 年 → 每帧年龄 ~1.8e9 秒 → 全判陈旧 → 出 0 帧）。
+            # 旧说法"实测 /hand_controller/commands 的 header.stamp 全是 0"已作废：2026-10-14 实测 peach 六集手命令
+            # **0 条**零 stamp（现在臂/手/state/相机四路都带真 stamp）。这条兜底留给老 bag / 换过的采集端。
+            # 真要触发时它不可靠：接收时钟与 stamp 时钟实测差 2~6 s，且每集比值在 0.987~1.114 之间变
+            # （见 <bag>/convert.log 的 ⚠ 行）：年龄会是秒级 → 全帧陈旧 → **放宽 --max-age 也救不回来**，
+            # 得让发布端打上 header.stamp。
+            ts = recv_ns * 1e-9
+            qc["nostamp"][topic] += 1
+        qc["seen"][topic] += 1
+        arrival[topic].append((ts, had_stamp))
+
+        if topic == IMG:
+            imgs.append((ts, bytes(m.data)))
+            continue
+        v = vec((ts, m), NAMES_OF[topic], "%s %s stamp=%.9f" % (bag.name, topic, ts))
+        if v is not None:
+            msgs[topic].append((ts, v))
+
+    # 到达顺序有多乱：留个哨兵。乱 = 有帧晚到（跨机链路排队/重传），照到达顺序写视频就会来回跳
+    qc["n_img"] = len(imgs)
+    qc["back"] = {t: back_steps(arrival[t]) for t in arrival}
+    qc["disorder"], qc["back_max"] = qc["back"][IMG]
+    imgs.sort(key=lambda x: x[0])
+    for _l in msgs.values():
+        _l.sort(key=lambda x: x[0])
+    stamps = {t: [x[0] for x in msgs[t]] for t in msgs}
+    # 间隔分布：**排序后**才算，所以它量的是真实空窗，不是到达顺序（乱序由 qc["back"] 管）
+    qc["gaps"] = {t: gaps_of(arrival[t]) for t in arrival}
+
+    def pick(topic, t_img):
+        """stamp ≤ t_img 的最新一条 (stamp, vec)；都没有（图像早于该路起点）返回 None。"""
+        j = bisect.bisect_right(stamps[topic], t_img)
+        return msgs[topic][j - 1] if j else None
+
+    for ts, jpeg in imgs:                     # ---- 按 stamp 出帧 ----
+        ms = pick(state_topic, ts)
+        if ms is None:
+            qc["no_state"] += 1
+            continue
+        sv = ms[1]
+        age_s = ts - ms[0]                    # state 也要查年龄：发布者停摆会静默冻结
+        if age_s > max_age:
+            qc["stale_state"] += 1
+            continue
+        qc["age_s_max"] = age_s if qc["age_s_max"] is None else max(qc["age_s_max"], age_s)
+        qc["age_s_min"] = age_s if qc["age_s_min"] is None else min(qc["age_s_min"], age_s)
+
+        if action_src == "echo":
+            av = sv
+        else:
+            ma, mh = pick(ARM_CMD, ts), pick(HAND_CMD, ts)
+            if ma is None or mh is None:
+                qc["no_action"] += 1
+                continue
+            age = ts - min(ma[0], mh[0])      # 两路里更旧的那个才算年龄
+            if age > max_age:
+                qc["stale_action"] += 1
+                continue
+            if age < 0:                       # 因果配对下不该出现；留个哨兵，出现就是配对逻辑坏了
+                qc["age_a_future"] += 1
+            qc["age_a_min"] = age if qc["age_a_min"] is None else min(qc["age_a_min"], age)
+            qc["age_a_max"] = age if qc["age_a_max"] is None else max(qc["age_a_max"], age)
+            av = np.concatenate([ma[1], mh[1]])
+
+        if action_src != "echo":           # echo 模式 action 就是 state，全等是应该的，不比
+            for _g, _sl in GROUPS:
+                if np.array_equal(av[_sl], sv[_sl]):
+                    qc["eq"][_g] += 1
+
+        if t0 is None:
+            t0 = ts
+        J.append(jpeg)
+        S.append(sv)
+        A.append(av)
+        T.append(ts - t0)
+
+    n = len(S)
+    state_array = np.stack(S) if n else np.zeros((0, N), np.float32)
+    action_array = np.stack(A) if n else np.zeros((0, N), np.float32)
+    stamp_array = np.asarray(T, dtype=np.float64)
+    if n:
+        validate_episode_data(state_array, action_array, stamp_array, fps, bag.name)
+        # All validation precedes image/NPZ writes; rejected episodes are not exported.
+        img_dir.mkdir(parents=True, exist_ok=True)
+        for i, jpeg in enumerate(J):
+            (img_dir / ("frame_%06d.jpg" % i)).write_bytes(jpeg)
+        timing_dir = out / "meta" / "timing"
+        timing_dir.mkdir(parents=True, exist_ok=True)
+        (timing_dir / ("episode_%06d.json" % ep)).write_text(json.dumps({
+            "source_bag": str(bag.resolve()), "source_first_stamp": t0,
+            "fps": float(fps), "relative_image_stamps": stamp_array.tolist(),
+            "max_frame_interval_periods": MAX_FRAME_INTERVAL_PERIODS, "qc": qc,
+        }, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+    npz_dir = out / NPZ_DIR
+    npz_dir.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        npz_dir / ("episode_%06d.npz" % ep),
+        state=state_array,
+        action=action_array,
+        # stamp = 图像 header.stamp 的真实值（相对本集首帧），仅供质检/溯源；
+        # 落进 parquet 的 timestamp 必须是 frame_index/fps（见 write_parquet）
+        stamp=stamp_array,
+        joint_names=np.array(MODEL_JOINT_NAMES),
+        # 不存 index0：它 = 前面各集的帧数之和，并行转换时这一集还不知道后面会不会有人插队，
+        # 存进去只会是个假值。真值由已知全量的那一步（main / --pack）现算现传（见 write_parquet）
+        episode_index=np.int64(ep), fps=np.float64(fps),
+    )
+    return n, qc
+
+
+def write_parquet(out, ep, index0) -> bool:
+    """npz → data/chunk-000/episode_%06d.parquet（只需 pyarrow）。
+
+    index0：本集第一帧在整库里的行号 = 前面各集的帧数之和（LeRobot 的全局 index 列）。
+    必须由调用者传 —— 并行转换时这一集自己算不出（见 convert_episode 里不存 index0 的原因）。
+
+    timestamp 写 frame_index/fps，**不是**真实相机时钟：LeRobot 的
+    check_timestamps_sync 要求集内严格等间隔（默认容差 1e-4 s），而真机相机
+    实测 33.34~33.45ms（29.9Hz），直接写真实值会被判
+    "timestamps unexpectedly violate the tolerance" 而加载失败。
+    只允许连续片段生成标称时间轴；真实时钟留在 meta/timing/ 和 npz 的 stamp 中。
+    """
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        return False
+    d = np.load(out / NPZ_DIR / ("episode_%06d.npz" % ep))
+    S, A = d["state"], d["action"]
+    validate_episode_data(S, A, d["stamp"], float(d["fps"]), "ep%d --pack/Parquet" % ep)
+    ep_i, n = int(d["episode_index"]), len(S)
+    T = np.arange(n) / float(d["fps"]) if n else np.zeros(0)
+    path = out / DATA_DIR / ("episode_%06d.parquet" % ep_i)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.table({
+        "action": pa.array([r.tolist() for r in A], pa.list_(pa.float32(), N)),
+        "observation.state": pa.array([r.tolist() for r in S], pa.list_(pa.float32(), N)),
+        "timestamp": pa.array(T.astype(np.float32), pa.float32()),
+        "frame_index": pa.array(np.arange(n), pa.int64()),
+        "episode_index": pa.array(np.full(n, ep_i), pa.int64()),
+        "index": pa.array(np.arange(index0, index0 + n), pa.int64()),
+        "task_index": pa.array(np.zeros(n, dtype=np.int64), pa.int64()),
+    }), path)
+    return True
+
+
+def _stat(x):
+    """LeRobot 风格的逐特征统计：min/max/mean/std + count（数组按最后一维给每维一个值）。"""
+    x = np.asarray(x, dtype=np.float64)
+    return {"min": np.atleast_1d(x.min(axis=0)).tolist(),
+            "max": np.atleast_1d(x.max(axis=0)).tolist(),
+            "mean": np.atleast_1d(x.mean(axis=0)).tolist(),
+            "std": np.atleast_1d(x.std(axis=0)).tolist(),
+            "count": [int(x.shape[0])]}
+
+
+def episode_stats(out, ep, index0=0, sample_step=6):
+    """生成 meta/episodes_stats.jsonl 的一行（LeRobot v2.1 必需）。
+
+    index0 只是 "index" 这一项的起点：并行转换时调用者还不知道真值 → 先按 0 算，
+    父进程拿到全量帧数后再用真 index0 覆盖这一项（main 里那行 "index" 覆盖）。
+    其余项与 index0 无关。
+
+    没有这个文件，lerobot 的 load_metadata() 会抛 FileNotFoundError → 转去查 HF Hub
+    → 报一个完全误导的 "401 RepositoryNotFoundError"。结构与既有数据集逐字段对齐。
+    图像按 [0,1] RGB 抽样统计（既有那份 1228 帧的 count 也是 207，同样抽样）。
+    """
+    d = np.load(out / NPZ_DIR / ("episode_%06d.npz" % ep))
+    S, A = d["state"], d["action"]
+    validate_episode_data(S, A, d["stamp"], float(d["fps"]), "ep%d statistics" % ep)
+    T = np.arange(len(S)) / float(d["fps"])          # 与 parquet 一致（规范要求等间隔）
+    n = len(S)
+    st = {
+        "action": _stat(A),
+        "observation.state": _stat(S),
+        "timestamp": _stat(T),
+        "frame_index": _stat(np.arange(n)),
+        "episode_index": _stat(np.full(n, ep)),
+        "index": _stat(np.arange(index0, index0 + n)),
+        "task_index": _stat(np.zeros(n, dtype=np.int64)),
+    }
+    acc = []
+    try:
+        import cv2                                    # 机器人上有；没有就跳过图像统计
+        img = out / "images" / IMG_KEY / ("episode_%06d" % ep)
+        for i in range(0, n, sample_step):
+            a = cv2.imdecode(np.frombuffer((img / ("frame_%06d.jpg" % i)).read_bytes(),
+                                           np.uint8), cv2.IMREAD_COLOR)
+            if a is not None:
+                acc.append(cv2.cvtColor(a, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0)
+    except ImportError:
+        pass
+    if acc:
+        X = np.stack(acc)
+        st[IMG_KEY] = {
+            "min": [[[float(X[..., c].min())]] for c in range(3)],
+            "max": [[[float(X[..., c].max())]] for c in range(3)],
+            "mean": [[[float(X[..., c].mean())]] for c in range(3)],
+            "std": [[[float(X[..., c].std())]] for c in range(3)],
+            "count": [len(acc)],
+        }
+    return {"episode_index": ep, "stats": st}
+
+
+def probe_video_info(path):
+    """从实际编码的视频读取描述和像素分量数，不假定 640x480/RGB。"""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_pixel_formats",
+             "-show_entries",
+             "stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate:"
+             "pixel_format=name,nb_components",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, check=True, timeout=30,
+        )
+        probe = json.loads(result.stdout)
+        streams = probe["streams"]
+        video = next(s for s in streams if s.get("codec_type") == "video")
+        components = {p["name"]: int(p["nb_components"])
+                      for p in probe["pixel_formats"]}
+        width, height = int(video["width"]), int(video["height"])
+        channels = components[video["pix_fmt"]]
+        video_fps = float(Fraction(video["avg_frame_rate"]))
+        if min(width, height, channels) <= 0 or not np.isfinite(video_fps) or video_fps <= 0:
+            raise ValueError("视频宽、高、通道数和帧率必须是有限正数")
+        return {
+            "video.height": height, "video.width": width,
+            "video.channels": channels, "video.fps": video_fps,
+            "video.codec": video["codec_name"], "video.pix_fmt": video["pix_fmt"],
+            "video.is_depth_map": False,
+            "has_audio": any(s.get("codec_type") == "audio" for s in streams),
+        }
+    except FileNotFoundError:
+        sys.exit("[FAIL] 找不到 ffprobe（视频元数据必需）：sudo apt install -y ffmpeg")
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError,
+            TypeError, StopIteration, ZeroDivisionError) as e:
+        detail = e.stderr[-400:] if isinstance(e, subprocess.CalledProcessError) else str(e)
+        sys.exit("[FAIL] 读取视频元数据失败 %s：%s" % (path, detail))
+
+
+def write_meta(out, task, eps, fps, stats):
+    # 一个相机 feature 只有一份公共描述；逐集核对，避免混合分辨率被静默标错。
+    video_info = None
+    for ep in eps:
+        path = (out / "videos" / "chunk-000" / IMG_KEY
+                / ("episode_%06d.mp4" % ep["episode_index"]))
+        current = probe_video_info(path)
+        if not np.isclose(current["video.fps"], fps, rtol=0, atol=1e-6):
+            sys.exit("[FAIL] 视频实际帧率与数据集 fps 不一致 %s：%s != %s"
+                     % (path, current["video.fps"], fps))
+        if video_info is None:
+            video_info = current
+        elif current != video_info:
+            sys.exit("[FAIL] 各集视频描述不一致（尺寸/通道数/编码/帧率）：%s\n%s != %s"
+                     % (path, current, video_info))
+    if video_info is None:
+        sys.exit("[FAIL] 没有视频，不能生成视频数据集元数据")
+    meta = out / "meta"
+    meta.mkdir(parents=True, exist_ok=True)
+    feats = {
+        "action": {"dtype": "float32", "shape": [N], "names": list(MODEL_JOINT_NAMES)},
+        "observation.state": {"dtype": "float32", "shape": [N],
+                              "names": list(MODEL_JOINT_NAMES)},
+        # 必须是 video：lerobot 的 LeRobotDataset.__getitem__ 只把 video_keys 塞进 sample，
+        # dtype="image" 的相机键不会报错、但图根本不会出现（数据集训不了）。
+        IMG_KEY: {"dtype": "video",
+                  "shape": [video_info["video.height"], video_info["video.width"],
+                            video_info["video.channels"]],
+                  "names": ["height", "width", "channels"],
+                  "info": video_info},
+    }
+    for k, dt in (("timestamp", "float32"), ("frame_index", "int64"),
+                  ("episode_index", "int64"), ("index", "int64"), ("task_index", "int64")):
+        feats[k] = {"dtype": dt, "shape": [1], "names": None}
+    (meta / "info.json").write_text(json.dumps({
+        "codebase_version": "v2.1", "robot_type": "q5",
+        "total_episodes": len(eps), "total_frames": sum(e["length"] for e in eps),
+        "total_tasks": 1, "total_videos": len(eps), "total_chunks": 1, "chunks_size": 10000,
+        "fps": fps, "splits": {"train": "0:%d" % len(eps)},
+        "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
+        "video_path": "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4",
+        "features": feats,
+    }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    (meta / "episodes.jsonl").write_text(
+        "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in eps), encoding="utf-8")
+    (meta / "tasks.jsonl").write_text(
+        json.dumps({"task_index": 0, "task": task}, ensure_ascii=False) + "\n",
+        encoding="utf-8")
+    # LeRobot v2.1 必需：缺它 lerobot 的 load_metadata() 会去查 HF Hub 并报误导性的 401
+    (meta / "episodes_stats.jsonl").write_text(
+        "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in stats), encoding="utf-8")
+
+
+def image_stats(out, ep, n):
+    """该集图片统计，帧数不符直接失败（供 main 打印、自检脚本断言）。
+
+    ① 行数 == 图数（现有链路正是栽在这里，要等到转 MP4 才暴露）；
+    ② 图片大小分布 —— JPEG 编码确定性，内容全同 ⇒ 字节全同 ⇒ 大小全同，
+       所以"唯一大小 == 1"就是画面冻住（零 I/O，只用 stat）。
+       注意：查不出"视角错"（流是活的、像素在变），那个只能靠人看。
+    """
+    files = sorted((out / "images" / IMG_KEY / ("episode_%06d" % ep)).glob("*.jpg"))
+    if len(files) != n:
+        sys.exit("[FAIL] ep%d 帧数 %d != 图数 %d" % (ep, n, len(files)))
+    kb = [f.stat().st_size / 1024 for f in files]
+    return {"episode_index": ep, "frames": len(files), "kb_min": min(kb), "kb_max": max(kb),
+            "size_uniq": len(set(round(k, 3) for k in kb))}
+
+
+def encode_video(out, ep, n, fps):
+    """图片序列 → videos/chunk-000/<key>/episode_%06d.mp4，并**验证帧数严格等于 n**。
+
+    用 image2 解复用器 + -frames:v；不用旧 merge 那套 ffconcat —— 那套会在末尾重复
+    一帧，导致每集 mp4 比 state 多 2 帧（视频与 state 从此错位），而且当时无人发现。
+    """
+    dst = out / "videos" / "chunk-000" / IMG_KEY / ("episode_%06d.mp4" % ep)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src = out / "images" / IMG_KEY / ("episode_%06d" % ep) / "frame_%06d.jpg"
+    # -nostdin 不能省：ffmpeg 的 stdin 是**继承来的**，它默认把 stdin 当交互命令流
+    # （`q` = 立刻退出）。终端里手一抖按到 q/回车，这一集就被截断，报出来的还是
+    # "视频帧数 != N" 这种看不出真因的错（10/12 实测：管道里一个 `q` → 506 → FAIL）。
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-nostdin", "-y", "-framerate", str(fps), "-i", str(src),
+             "-frames:v", str(n), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             "-crf", "23", "-preset", "veryfast", str(dst)],
+            capture_output=True, text=True)
+    except FileNotFoundError:
+        sys.exit("[FAIL] 找不到 ffmpeg（视频模式必需）：sudo apt install -y ffmpeg")
+    if r.returncode != 0:
+        sys.exit("[FAIL] ep%d ffmpeg 编码失败：%s" % (ep, r.stderr[-400:]))
+    # 数帧用 count_packets 而不是 count_frames：一个 access unit 一包，包数 == 帧数
+    # （实测 423/690 帧两张都相等），但**不用把整段视频解码一遍**：0.24 s → 0.02 s/集。
+    # 这个校验要抓的东西（旧 merge 在末尾多写一帧 → 比 state 多 2 帧）它一样抓得住。
+    try:
+        got = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+             "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(dst)],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout.strip()
+    except FileNotFoundError:
+        sys.exit("[FAIL] 找不到 ffprobe（用于校验帧数）：apt install -y ffmpeg")
+    if not got.isdigit() or int(got) != n:
+        sys.exit("[FAIL] ep%d 视频帧数 %s != %d（旧 merge 正是栽在这里）" % (ep, got, n))
+    return dst
+
+
+def one_episode(job):
+    """一集的全部离线加工，供多进程池调用（也是串行时的同一条路径）。
+
+    为什么按集并行：这一集里 90% 的时间是 ffmpeg 编码 + 图像统计，两者都只吃自己的这一集，
+    集与集之间零依赖。实测 12 集 26.2 s → 6.9 s（8 进程，3.8×），32 核机器上原来只用 1~2 核。
+    依赖 index0 的两件事留到父进程做（那时才有全量帧数）：parquet 由父进程写、
+    episodes_stats 的 "index" 项由父进程覆盖。
+    **不删 npz**（父进程还要拿它写 parquet），只删本集的临时 jpg。
+
+    子进程里 sys.exit 会把 Pool 卡死/报成难懂的错 → 这里把 SystemExit 转成返回值，
+    由父进程原样 sys.exit（错误信息与串行时一致）。返回 (ep, n, qc或错误串, ims, stats)；
+    真·0 帧时 n=0、qc 是统计字典（父进程照旧打印那段诊断）。
+    """
+    ep, bag, out, action_src, fps, state_topic, max_age = job
+    try:
+        n, qc = convert_episode(bag, out, ep, action_src, fps, state_topic, max_age)
+        if n == 0:
+            return ep, 0, qc, None, None
+        ims = image_stats(out, ep, n)
+        st = episode_stats(out, ep)                    # index 项用 0 占位，父进程按真值覆盖
+        encode_video(out, ep, n, fps)
+        shutil.rmtree(out / "images" / IMG_KEY / ("episode_%06d" % ep))
+        return ep, n, qc, ims, st
+    except SystemExit as e:
+        return ep, 0, str(e.code), None, None
+
+
+def main():
+    ap = argparse.ArgumentParser(description="rosbag → LeRobot v2.1（离线整形）")
+    ap.add_argument("bags", nargs="?", type=Path, help="装着若干 bag 目录的目录，一个 bag 一集")
+    ap.add_argument("--task", help="任务名，写进 meta")
+    ap.add_argument("-o", "--out", type=Path, help="输出数据集目录")
+    ap.add_argument("--action", choices=("command", "echo"), default="command",
+                    help="command=命令话题（真专家动作）；echo=action 取 state（对照）")
+    ap.add_argument("--fps", type=int, default=30, help="只写进 meta，不重采样")
+    ap.add_argument("--state-topic", default=AUTO, metavar="TOPIC",
+                    help="state 来源话题。默认 %s = **从 bag 里认**：有 %s 就用它（机器人本机录的），"
+                         "否则 %s（rospc 跨机录的），再否则 %s（老 bag）"
+                         % (AUTO, STATE, STATE_RELAY, STATE_BE))
+    ap.add_argument("--max-age", type=float, default=MAX_AGE, metavar="SEC",
+                    help="配对年龄上限（秒，默认 %.2f）：按 stamp 配对后，配到的那条比图像旧超过它就"
+                         "判为陈旧、丢这一帧（对应 ROS ApproximateTime 的 slop）" % MAX_AGE)
+    ap.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 1), metavar="N",
+                    help="按集并行的进程数（默认 %(default)s = min(8, 核数)）。"
+                         "1 = 老的串行路径。并行只是把互不依赖的集同时做，产物与串行逐字节相同")
+    ap.add_argument("--npz", action="store_true",
+                    help="保留 npz（默认删掉、**正常产物就是 data/ meta/ videos/**；npz 只是打 parquet、"
+                         "算 episodes_stats 的中转。没 pyarrow 的机器上想先出 npz 再拿去 --pack，才加这个）")
+    ap.add_argument("--pack", type=Path, metavar="DIR",
+                    help="第二步：把 --npz 转出来的 DIR 里的 npz 打成 parquet（只需 pyarrow、不需要 ROS）")
+    a = ap.parse_args()
+    if a.fps <= 0 or not np.isfinite(a.max_age) or a.max_age <= 0 or a.jobs <= 0:
+        ap.error("--fps、--max-age 和 --jobs 必须是有限正数")
+
+    if a.pack:                                  # ---- 第二步：npz → parquet ----
+        eps_idx = sorted(int(p.stem.split("_")[1])
+                         for p in (a.pack / NPZ_DIR).glob("episode_*.npz"))
+        if not eps_idx:
+            sys.exit("%s 里没有 npz，先跑第一步" % (a.pack / NPZ_DIR))
+        # index0 现算：= 前面各集的帧数之和（npz 里不再存它，见 convert_episode）
+        index0 = 0
+        for ep in eps_idx:
+            if not write_parquet(a.pack, ep, index0):
+                sys.exit("打 parquet 需要 pyarrow：python3 -m pip install pyarrow")
+            index0 += len(np.load(a.pack / NPZ_DIR / ("episode_%06d.npz" % ep))["state"])
+        print("[OK] %d 集 parquet → %s" % (len(eps_idx), a.pack))
+        return
+
+    if not (a.bags and a.task and a.out):       # ---- 第一步：bag → JPG + npz ----
+        ap.error("要么给 <bags> --task --out，要么给 --pack DIR")
+    # 输出契约：正常产物 = data/ + meta/ + videos/，打 parquet 需要 pyarrow。
+    # 没 pyarrow 且没加 --npz 时**当场报错退出**（而不是留一个缺 data/ 的半成品），
+    # 想让这台机器先出 npz、回头在有 pyarrow 的机器上 --pack 补，就显式加 --npz。
+    if not a.npz and not have_pyarrow():
+        sys.exit("✗ 没装 pyarrow：默认输出 data/ meta/ videos/，打 parquet 需要它。\n"
+                 "  装：python3 -m pip install --user pyarrow\n"
+                 "      （或装到别处并加进 PYTHONPATH：python3 -m pip install --target ~/xiaodan/pylibs pyarrow）\n"
+                 "  想先只出 npz：ros2 run q5_datacollect convert <task> --npz\n"
+                 "      之后在有 pyarrow 的机器上：ros2 run q5_datacollect bag2lerobot --pack <数据集目录>")
+    cand = sorted(p for p in a.bags.iterdir() if (p / "metadata.yaml").is_file())
+    bags = [p for p in cand if _EP_NAME.fullmatch(p.name)]
+    ignored = [p.name for p in cand if not _EP_NAME.fullmatch(p.name)]
+    if ignored:
+        print("⚠ 忽略 %d 个名字不是 epNNN 的目录（不进数据集，也不会顶掉别人的集号）：%s"
+              % (len(ignored), ", ".join(ignored)))
+    if not bags:
+        sys.exit("没找到 bag：%s/ 下应有 ep001/metadata.yaml 这样的目录" % short(a.bags))
+    # 判据是**目录在不在**，不是 meta/info.json 在不在：info.json 是最后一步才写的，
+    # 所以"跑到一半被打断"留下的目录里没有它 —— 只判 info.json 会把脏目录当干净的复用，
+    # 留下一批"新集数里已经没有这个号"的 parquet/mp4 孤儿（实测：info.json 说 3 集、
+    # data/ 里躺着第 4 集的 parquet）
+    if a.out.exists():
+        if (a.out / "meta" / "info.json").exists():
+            sys.exit("输出目录已有数据集：%s（换目录，或用 convert <task> --force 删掉重转）"
+                     % short(a.out))
+        sys.exit("输出目录存在但没有 meta/info.json：%s\n"
+                 "  上次转换没跑完，里面可能是半成品（info.json 是最后一步才写的）。\n"
+                 "  看一眼：ls %s；确认不要了就用 convert <task> --force 删掉重转"
+                 % (short(a.out), short(a.out)))
+
+    eps, stats, index0, packed = [], [], 0, 0
+    jobs = [(ep, bag, a.out, a.action, a.fps, a.state_topic, a.max_age)
+            for ep, bag in enumerate(bags)]
+    if a.jobs > 1 and len(jobs) > 1:
+        # spawn 不是 fork：fork 出来的子进程里已经有 rosbag2_py / CycloneDDS 的 .so，
+        # 在同一个进程镜像上再建 reader 有死锁风险（实测会卡死在 Pool.map）
+        # ponytail: 换速度的代价是 8 集同时在内存/盘上（每集 ~50 MB jpg，做完即删）。
+        # 集更大或机器更小就 --jobs 调小；不设内存预算，靠人看一眼 nproc / free
+        n_jobs = min(a.jobs, len(jobs))
+        print("按集并行：%d 进程（一集一个点，跑完统一打印各集 QC）" % n_jobs)
+        results = []
+        with mp.get_context("spawn").Pool(n_jobs) as pool:
+            for r in pool.imap_unordered(one_episode, jobs):
+                results.append(r)
+                print("  ·", end="", flush=True)
+        print()
+        results.sort(key=lambda r: r[0])              # 并行完成顺序是乱的，按集号排回来
+    else:
+        results = [one_episode(j) for j in jobs]
+
+    for j, (_ep, n, qc, ims, st) in zip(jobs, results):
+        ep, bag = j[0], j[1]
+        if isinstance(qc, str):                       # 子进程里 sys.exit 的错误，原样抛出
+            sys.exit(qc)
+        if n == 0:
+            counts = "  ".join("%s=%d" % (LABEL.get(t, t.rsplit("/", 1)[-1]), c)
+                               for t, c in qc["seen"].items())
+            sys.exit("%s 出 0 帧。bag 里各话题消息数：%s\n"
+                     "  配对统计：no_state=%d no_action=%d 陈旧state=%d 陈旧action=%d 负年龄=%d\n"
+                     "    · cam_image=0            → 相机没在发（帧以相机为时钟，没图就没帧）\n"
+                     "    · 陈旧action 爆掉        → 命令两路时间差 > --max-age（当前 %.0fms）。若下面 nostamp 非 0，\n"
+                     "                               那一路是**没打 stamp、拿 bag 接收时间顶的**：接收时钟与 stamp 时钟\n"
+                     "                               实测差 2~6 s，放宽 --max-age 救不回来，得让发布端把 header.stamp 打上\n"
+                     "    · no_state / no_action 爆 → state 选错（--state-topic 显式指定）或那一路本来没数据"
+                     % (bag.name, counts, qc["no_state"], qc["no_action"], qc["stale_state"],
+                        qc["stale_action"], qc["age_a_future"], a.max_age * 1e3))
+        print("  %-7s %4d 帧   图片 %.1f~%.1f KB（%d 种大小）%s"
+              % (bag.name, n, ims["kb_min"], ims["kb_max"], ims["size_uniq"],
+                 "   ← 全部一样，画面很可能冻住！" if ims["size_uniq"] == 1 else ""))
+        # 年龄 = 图像 stamp − 所用消息 stamp，单位 ms。负值 = 用到的消息比图像"新"
+        # （跨机常态：图像传得慢，命令/状态早到了）。按秒带符号打印会读成 "state≤-0.010s" 很别扭。
+        if qc["age_a_max"] is None:                   # echo 模式：action 就是 state，没有命令年龄
+            age = "state 年龄 %.0f…%.0f ms（echo 模式无命令年龄）" % (
+                qc["age_s_min"] * 1e3, qc["age_s_max"] * 1e3)
+        else:
+            # 因果配对后年龄恒 ≥ 0；真出现负值说明配对逻辑坏了，标出来当哨兵
+            fut = ("" if qc["age_a_future"] == 0
+                   else "（负年龄 %d 帧 —— 配对逻辑异常）" % qc["age_a_future"])
+            age = ("action 年龄 %.0f…%.0f ms%s · state 年龄 %.0f…%.0f ms"
+                   % (qc["age_a_min"] * 1e3, qc["age_a_max"] * 1e3, fut,
+                      qc["age_s_min"] * 1e3, qc["age_s_max"] * 1e3))
+        print("           跳过 state/action/旧state/旧action = %d/%d/%d/%d"
+              % (qc["no_state"], qc["no_action"], qc["stale_state"], qc["stale_action"]))
+        # 各路的间隔分布（P50·P95·P99·最大 ms）：**一路一种时钟**，只取该路自己的 header.stamp；
+        # 有帧没打 stamp（拿接收时间顶的）那路打 "—"，不报假数
+        _st = (qc["state_topic"], IMG, ARM_CMD, HAND_CMD)
+        print("           间隔ms（P50·P95·P99·最大）: %s"
+              % "  ".join("%s %s" % (LABEL.get(t, t.rsplit("/", 1)[-1]),
+                                     "—" if qc["gaps"].get(t) is None else
+                                     "%.1f·%.1f·%.1f·%.0f"
+                                     % tuple(v * 1e3 for v in qc["gaps"][t][:4]))
+                          for t in _st))
+        # 空窗 = 这段真实时间在数据集里**没有帧**：平均速率达标、丢帧率都可能看不出来
+        # （parquet 时间轴是 frame_index/fps 合成的等间隔，洞被悄悄抹平）
+        _hole = [(LABEL.get(t, t.rsplit("/", 1)[-1]), qc["gaps"][t][3])
+                 for t in _st if qc["gaps"].get(t) and qc["gaps"][t][3] > 0.1]
+        if _hole:
+            print("           ⚠ 有空窗（>100ms）：%s —— 那几段真实时间在数据集里没有帧"
+                  % "  ".join("%s %.0fms" % h for h in _hole))
+        # 到达顺序与 stamp 不符：图像那路下面已有单独一行，这里只报 state/命令三路（不是丢帧，是晚到）
+        _bk = [(LABEL.get(t, t.rsplit("/", 1)[-1]), qc["back"][t])
+               for t in (qc["state_topic"], ARM_CMD, HAND_CMD)
+               if qc["back"].get(t, (0, 0))[0]]
+        if _bk:
+            print("           ⚠ state/命令的到达顺序与 stamp 不符：%s —— 有帧晚到（不是丢帧）"
+                  % ", ".join("%s %d处/最大%.2fs" % (l, x, y) for l, (x, y) in _bk))
+        # action == state 逐组全等帧占比：dexdagger 那种"action 就是 follower 状态"的退化标签
+        # 会逼近 100%（bittermelon 实测四组 0.00%）。**只告警、不删集** —— 真机静止时臂/手整段
+        # 不动，命令与实测偶尔逐位相同是正常的，先攒基线再决定要不要升成硬失败。
+        if a.action != "echo" and n:
+            print("           action==state 全等帧：%s"
+                  % "  ".join("%s %.1f%%" % (g, 100.0 * qc["eq"][g] / n) for g, _ in GROUPS))
+            if max(qc["eq"].values()) * 2 >= n:
+                print("           ⚠ 某组 action 与 state 逐位相同的帧 ≥50%% —— 疑似该组 action 是"
+                      "状态副本（标签退化）；对照 convert --action echo 的产物看一眼")
+        # 每集单独看：全任务 0.4% 的丢失可能全压在一两集里（实测 peach：2 集 4.8%/4.3%，其余 ≤0.7%）
+        lost = qc["n_img"] - n
+        if lost * 100 > MAX_LOST_PCT * qc["n_img"]:
+            print("           ⚠ 丢了 %d/%d 帧（%.1f%%）—— 丢的那段真实时间在数据集里被抹掉了"
+                  "（parquet 时间轴是等间隔合成的），上面跳过计数里的那一段就是它"
+                  % (lost, qc["n_img"], 100.0 * lost / qc["n_img"]))
+        if qc["disorder"]:
+            print("           ⚠ 图像到达顺序与 stamp 不符：%d/%d 处倒退，最大 %.2f s —— 有帧晚到"
+                  "（不是丢帧）。写帧已按 stamp 排序，视频不受影响；这批 bag 的跨机时戳要复查"
+                  % (qc["disorder"], qc["n_img"], qc["back_max"]))
+        if any(qc["nostamp"].values()):
+            print("           ⚠ 这些话题没打 header.stamp，已用 bag 接收时间兜底：%s"
+                  "（接收时钟与 stamp 时钟实测能差 2~6 s，年龄因此失真——别照上面提示放宽 --max-age，"
+                  "去给发布端补 stamp）"
+                  % ", ".join("%s=%d" % (LABEL.get(t, t.rsplit("/", 1)[-1]), n)
+                              for t, n in qc["nostamp"].items() if n))
+        print("           %s" % age)
+        if qc["state_topic"] != STATE_RELAY:
+            print("           state 话题 %s%s"
+                  % (qc["state_topic"], "（bag 里自动识别）" if a.state_topic == AUTO else "（显式指定）"))
+        # "index" 是唯一依赖 index0 的统计项，而 index0 要等前面各集都数完才知道
+        # （并行时子进程不可能知道）→ 这里按真值重算这一项。用同一个 _stat，
+        # 不另写闭式公式，免得两份算法哪天不一致。
+        st["stats"]["index"] = _stat(np.arange(index0, index0 + n))
+        stats.append(st)
+        packed += write_parquet(a.out, ep, index0)
+        eps.append({"episode_index": ep, "tasks": [a.task], "length": n})
+        index0 += n
+    write_meta(a.out, a.task, eps, a.fps, stats)
+    # images/ 只是编码 MP4 的中间产物（video 模式从 mp4 读帧，LeRobot 不读这里），
+    # 顺手把这层空壳删掉，免得数据集里留个让人疑惑的空目录
+    for d in (a.out / "images" / IMG_KEY, a.out / "images"):
+        try:
+            d.rmdir()
+        except OSError:
+            pass                                          # 非空（image 模式）或已不存在就算了
+
+    print("[OK] %d 集 %d 帧，行数==图数==视频帧数 → %s" % (len(eps), index0, short(a.out)))
+    # npz 是中间产物：打完 parquet、算完 episodes_stats 就没用了，默认删掉（--npz 才留）。
+    # 但本机没 pyarrow 时必须留着 —— 它是 PC 上 --pack 补 parquet 的唯一来源。
+    if a.npz:
+        print("     npz 已保留（--npz）：%s" % short(a.out / NPZ_DIR))
+    else:
+        shutil.rmtree(a.out / NPZ_DIR, ignore_errors=True)   # 默认删：npz 只是打 parquet 的中转
+        try:
+            (a.out / "npz").rmdir()                          # 顺手清掉空的 npz/ 父目录
+        except OSError:
+            pass
+    if packed == len(eps):
+        print("     parquet 已就绪（data/ meta/ videos/ 齐全）")
+    elif a.npz:
+        # 显式 --npz 就是"这台机器没 pyarrow，先出 npz，回头补"的预期路径 —— 指路，不算错
+        print("     还差 parquet（本机没 pyarrow）：在有 pyarrow 的机器上跑 "
+              "ros2 run q5_datacollect bag2lerobot --pack %s" % short(a.out))
+    else:
+        sys.exit("✗ %d/%d 集的 parquet 没写成 —— 数据集不完整，别拿去训"
+                 % (len(eps) - packed, len(eps)))
+
+
+if __name__ == "__main__":
+    main()
